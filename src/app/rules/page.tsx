@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Flourish } from '@/ds/Flourish';
 import { ElementOrb } from '@/ds/ElementOrb';
 import { TemperamentMark } from '@/ds/GenesisCard';
-import { CONVERGENCE_ROUNDS, DRAW_PER_TURN, HAND_MAX, HAND_START, MAX_PLAYS, MAX_ROUNDS, WIN_PULL } from '@/game/engine';
+import { CONVERGENCE_ROUNDS, DRAW_PER_TURN, GENESIS_FROM_ROUND, HAND_MAX, HAND_START, MAX_PLAYS, MAX_ROUNDS, WIN_PULL } from '@/game/engine';
 import styles from './rules.module.css';
 
 export const metadata: Metadata = {
@@ -48,7 +48,7 @@ export default function Rules() {
             <b>Refresh.</b> Unspent elements fade. You gain one of each element, plus one more attuned to what your hand needs, plus anything your generators make.
           </li>
           <li>
-            <b>Draw</b> {DRAW_PER_TURN} cards. You start with {HAND_START}; at the end of your turn you discard down to {HAND_MAX}.
+            <b>Draw</b> {DRAW_PER_TURN} cards. You start with {HAND_START} (the last two seats start with one more, to offset tempo); at the end of your turn you discard down to {HAND_MAX}.
           </li>
           <li>
             <b>Play</b> up to {MAX_PLAYS} cards you can afford. Genesis cards are free and don&apos;t count.
@@ -106,7 +106,7 @@ export default function Rules() {
       <section>
         <h2>Genesis</h2>
         <p>
-          Eighteen eureka cards sit outside every deck. When you meet one&apos;s trigger it materialises in your hand — once per match. Three temperaments form a triangle:
+          Eighteen eureka cards sit outside every deck. From round {GENESIS_FROM_ROUND}, when you meet one&apos;s trigger it materialises in your hand — once per match. Three temperaments form a triangle:
         </p>
         <div className={styles.tempers}>
           <span>

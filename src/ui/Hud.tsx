@@ -257,6 +257,21 @@ function Hand() {
   );
 }
 
+/* ---------------- first-match hint ---------------- */
+function Hint() {
+  const { g, stats, selected } = useGame(useShallow((s) => ({ g: s.game!, stats: s.stats, selected: s.selected })));
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed || stats.played > 0 || g.round > 2 || g.current !== 0 || g.phase !== 'playing' || selected) return null;
+  return (
+    <div className={styles.hint}>
+      <Label size="nano" color="ash">Select a card · glowing rivals are in reach · right-click to inspect · Enter ends the turn</Label>
+      <button className={styles.cancel} onClick={() => setDismissed(true)}>
+        Got it
+      </button>
+    </div>
+  );
+}
+
 /* ---------------- end turn ---------------- */
 function TurnControls() {
   const { g, endMyTurn } = useGame(useShallow((s) => ({ g: s.game!, endMyTurn: s.endMyTurn })));
@@ -489,13 +504,13 @@ function EndScreen() {
         </ol>
         <div className={styles.endStats}>
           <span>
-            <b>{g.round}</b> rounds
+            <b>{g.round}</b> {g.round === 1 ? 'round' : 'rounds'}
           </span>
           <span>
-            <b>{stats.wins}</b> wins
+            <b>{stats.wins}</b> {stats.wins === 1 ? 'win' : 'wins'}
           </span>
           <span>
-            <b>{stats.losses}</b> losses
+            <b>{stats.losses}</b> {stats.losses === 1 ? 'loss' : 'losses'}
           </span>
         </div>
         <div className={styles.endActions}>
@@ -607,7 +622,10 @@ export function Hud() {
           </div>
           <PoolBar />
         </div>
-        <Hand />
+        <div className={styles.handCol}>
+          <Hint />
+          <Hand />
+        </div>
         <TurnControls />
       </div>
       <Toast />

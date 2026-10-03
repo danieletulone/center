@@ -49,7 +49,6 @@ interface Store {
   dismissGenesis: () => void;
   setInspect: (id: string | null) => void;
   setSettings: (s: Partial<Settings>) => void;
-  pruneFx: (now: number) => void;
 }
 
 let fxSeq = 0;
@@ -77,6 +76,12 @@ function saveJSON(key: string, v: unknown) {
 }
 
 const DEFAULT_SETTINGS: Settings = { sound: true, music: true, quality: 'high', speed: 1 };
+
+/** Keep only FX young enough to still be animating. */
+function recent(fx: TimedFx[]) {
+  const now = performance.now();
+  return fx.length > 40 ? fx.filter((e) => now - e.t < 5000) : fx;
+}
 
 function drain(g: GameState): TimedFx[] {
   const now = performance.now();
@@ -193,7 +198,7 @@ export const useGame = create<Store>((set, get) => ({
     const genesis = fx.filter((e) => e.kind === 'genesis' && e.at === 0).map((e) => (e as { card: string }).card);
     set((s) => ({
       game: g,
-      fx: [...s.fx, ...fx],
+      fx: [...recent(s.fx), ...fx],
       selected: null,
       pendingTargets: [],
       casts: [...s.casts.slice(-4), { id: ++castSeq, player: 0, cardId: c.id, targets: intent.targets }],
@@ -211,7 +216,7 @@ export const useGame = create<Store>((set, get) => ({
     soundFor(fx);
     sfx.play('endturn');
     const genesis = fx.filter((e) => e.kind === 'genesis' && e.at === 0).map((e) => (e as { card: string }).card);
-    set((s) => ({ game: g, fx: [...s.fx, ...fx], selected: null, pendingTargets: [], genesisQueue: [...s.genesisQueue, ...genesis] }));
+    set((s) => ({ game: g, fx: [...recent(s.fx), ...fx], selected: null, pendingTargets: [], genesisQueue: [...s.genesisQueue, ...genesis] }));
     afterAction(g, get, set);
   },
 
@@ -231,7 +236,7 @@ export const useGame = create<Store>((set, get) => ({
         const genesis = fx.filter((e) => e.kind === 'genesis' && e.at === 0).map((e) => (e as { card: string }).card);
         set((s) => ({
           game: g,
-          fx: [...s.fx, ...fx],
+          fx: [...recent(s.fx), ...fx],
           casts: [...s.casts.slice(-4), { id: ++castSeq, player: actor, cardId: id, targets: intent.targets }],
           genesisQueue: [...s.genesisQueue, ...genesis],
         }));
@@ -243,7 +248,7 @@ export const useGame = create<Store>((set, get) => ({
     const fx = drain(g);
     soundFor(fx);
     const genesis = fx.filter((e) => e.kind === 'genesis' && e.at === 0).map((e) => (e as { card: string }).card);
-    set((s) => ({ game: g, fx: [...s.fx, ...fx], genesisQueue: [...s.genesisQueue, ...genesis] }));
+    set((s) => ({ game: g, fx: [...recent(s.fx), ...fx], genesisQueue: [...s.genesisQueue, ...genesis] }));
     if (g.current === 0 && g.phase === 'playing') sfx.play('turn');
     afterAction(g, get, set);
     return 'ended';
@@ -257,10 +262,6 @@ export const useGame = create<Store>((set, get) => ({
     sfx.setEnabled(settings.sound);
     sfx.setMusic(settings.music);
     set({ settings });
-  },
-  pruneFx: (now) => {
-    const fx = get().fx;
-    if (fx.length && fx.some((e) => now - e.t > 4000)) set({ fx: fx.filter((e) => now - e.t <= 4000) });
   },
 }));
 

@@ -284,6 +284,31 @@
 }
 
 /* ---------- hand ---------- */
+.handCol {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.hint {
+  pointer-events: auto;
+  position: absolute;
+  bottom: calc(100% + 60px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.7);
+  box-shadow: inset 0 0 0 1px var(--border-hairline);
+  animation: wa-rise 600ms var(--ease-ritual) 1.4s both;
+}
+@media (max-width: 760px) {
+  .hint {
+    display: none;
+  }
+}
 .handWrap {
   position: relative;
   display: flex;
@@ -946,7 +971,7 @@
   .controls {
     grid-area: controls;
   }
-  .handWrap {
+  .handCol {
     grid-area: hand;
   }
   .poolOrbs {
