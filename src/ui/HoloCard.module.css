@@ -1,0 +1,49 @@
+.holo {
+  --rx: 0deg;
+  --ry: 0deg;
+  --mx: 50%;
+  --my: 50%;
+  --glare: 0;
+  perspective: 900px;
+  display: inline-block;
+}
+.inner {
+  position: relative;
+  transform: rotateX(var(--rx)) rotateY(var(--ry));
+  transform-style: preserve-3d;
+  transition: transform 420ms var(--ease-ritual);
+  will-change: transform;
+}
+.holo:hover .inner {
+  transition: transform 80ms linear;
+}
+.glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: var(--radius-card);
+  background: radial-gradient(circle at var(--mx) var(--my), rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 35%, transparent 60%);
+  mix-blend-mode: screen;
+  opacity: var(--glare);
+  transition: opacity 300ms var(--ease-veil);
+}
+.sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(
+      115deg,
+      transparent 20%,
+      rgba(255, 120, 120, 0.1) 32%,
+      rgba(120, 180, 255, 0.12) 42%,
+      rgba(200, 140, 255, 0.14) 52%,
+      rgba(255, 255, 255, 0.12) 60%,
+      transparent 72%
+    );
+  background-size: 260% 260%;
+  background-position: var(--mx) var(--my);
+  mix-blend-mode: screen;
+  opacity: 0.6;
+}
