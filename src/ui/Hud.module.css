@@ -1118,3 +1118,11 @@
     transform: scale(0.85);
   }
 }
+
+/* narrow phones: longer translations (e.g. FINE TURNO) must not crowd the pool */
+@media (max-width: 480px) {
+  .controls button {
+    transform: scale(0.78);
+    transform-origin: right bottom;
+  }
+}
