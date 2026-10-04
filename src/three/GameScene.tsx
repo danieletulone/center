@@ -16,7 +16,10 @@ import { useShallow } from 'zustand/react/shallow';
 import { useGame, type TimedFx } from '@/game/store';
 import { WIN_PULL, activeStatuses, legalTargets } from '@/game/engine';
 import { cardDef } from '@/game/cards';
-import type { GameState, Player } from '@/game/types';
+import type { FloatKey, GameState, Player } from '@/game/types';
+import { fmt, plural } from '@/i18n';
+import { useI18n } from '@/i18n/I18nProvider';
+import { floatText, playerName, statusText } from '@/i18n/game';
 import { EL_COLOR, EL_HEX, SEAT_R, addTrauma, cameraFx, seatPos } from './palette';
 import { Particles, emit } from './Particles';
 import { Halo, Nexus } from './Nexus';
@@ -197,8 +200,13 @@ function SeatLabel({ p, current, targetable, chosen, onPick }: { p: Player; curr
   const g = useGame((s) => s.game)!;
   const ref = useRef<THREE.Group>(null);
   useFrame(() => ref.current?.position.copy(live.tokens[p.index]).setY(0));
+  const { d } = useI18n(); // resolved here: drei <Html> renders in its own root, outside the context bridge
   const statuses = activeStatuses(g, p);
   const frac = Math.max(0, Math.min(1, p.pull / WIN_PULL));
+  const name = playerName(p, d);
+  const cards = fmt(plural(p.hand.length, d.hud.cardsOne, d.hud.cardsOther), { n: p.hand.length });
+  const genesis = p.genesisEarned.length > 0 ? fmt(d.hud.genesisCount, { n: p.genesisEarned.length }) : null;
+  const chips = statuses.slice(0, 5).map((s) => ({ tone: statusTone(s.kind), text: statusText(s.kind, s.value, d, 'short') }));
   return (
     <group ref={ref}>
       <Html center position={labelOffset(p.seat)} zIndexRange={[9, 0]} style={{ pointerEvents: 'none' }}>
@@ -208,7 +216,7 @@ function SeatLabel({ p, current, targetable, chosen, onPick }: { p: Player; curr
           style={{ pointerEvents: targetable ? 'auto' : 'none' }}
         >
           <div className={styles.nameRow}>
-            <span className={styles.name}>{p.human ? 'You' : p.name}</span>
+            <span className={styles.name}>{name}</span>
             <span className={styles.pull}>{p.pull}</span>
           </div>
           <div className={styles.bar}>
@@ -217,15 +225,15 @@ function SeatLabel({ p, current, targetable, chosen, onPick }: { p: Player; curr
           </div>
           {!p.human && (
             <div className={styles.meta}>
-              <span>{p.hand.length} cards</span>
-              {p.genesisEarned.length > 0 && <span>· {p.genesisEarned.length} genesis</span>}
+              <span>{cards}</span>
+              {genesis && <span>{genesis}</span>}
             </div>
           )}
-          {statuses.length > 0 && (
+          {chips.length > 0 && (
             <div className={styles.chips}>
-              {statuses.slice(0, 5).map((s, i) => (
-                <span key={i} className={styles.chip} data-tone={statusTone(s.kind)}>
-                  {statusShort(s.kind, s.value)}
+              {chips.map((c, i) => (
+                <span key={i} className={styles.chip} data-tone={c.tone}>
+                  {c.text}
                 </span>
               ))}
             </div>
@@ -241,45 +249,13 @@ function labelOffset(seat: number): [number, number, number] {
   if (seat === 0) return [0, 0, 1.1];
   return [0, 0, 1.15]; // west / east: just below the token
 }
-function statusTone(k: string) {
+function statusTone(k: string): string {
   if (['frozen', 'locked', 'chill', 'glacier', 'numb', 'cryoBind', 'genDown'].includes(k)) return 'ice';
   if (['marked', 'burn'].includes(k)) return 'fire';
   if (['genBonus', 'skipDraw', 'encircle', 'vantage'].includes(k)) return 'flux';
   if (['plague', 'plagueCaster', 'skipTurn'].includes(k)) return 'mono';
   return 'arcane';
 }
-function statusShort(k: string, v: number) {
-  const m: Record<string, string> = {
-    shield: `Shield ${v}`,
-    immune: 'Bulwark',
-    aegis: 'Aegis',
-    floor: 'Anchor',
-    redirect: 'Magnius',
-    reflect: 'Mirror',
-    staticField: 'Static',
-    phase: 'Phase',
-    counter: 'Counter',
-    marked: 'Marked',
-    burn: 'Burn',
-    frozen: 'Frozen',
-    locked: 'Lock',
-    chill: 'Chill',
-    glacier: 'Glacier',
-    numb: 'Numb',
-    genDown: 'Iced',
-    cryoBind: 'Bound',
-    genBonus: 'Radiant',
-    skipDraw: 'No draw',
-    anchorSeat: 'Rooted',
-    encircle: 'Encircle',
-    vantage: 'Vantage',
-    plague: 'Plague',
-    plagueCaster: 'Plaguebound',
-    skipTurn: 'Skip',
-  };
-  return m[k] ?? k;
-}
-
 /* ---------- tethers ---------- */
 function Tether({ p }: { p: Player }) {
   const ref = useRef<THREE.Object3D & { setPoints: (a: THREE.Vector3, b: THREE.Vector3, m: THREE.Vector3) => void; material: THREE.Material & { dashOffset: number; opacity: number; linewidth: number } }>(null);
@@ -412,10 +388,13 @@ function RingMesh({ r, onDone }: { r: Ring; onDone: (id: number) => void }) {
 interface Floater {
   id: number;
   at: number;
-  text: string;
+  key: FloatKey;
+  n?: number;
   tone: string;
 }
 function FloatText({ f, onDone }: { f: Floater; onDone: (id: number) => void }) {
+  const { d } = useI18n();
+  const text = floatText(f.key, f.n, d);
   const ref = useRef<THREE.Group>(null);
   const born = useRef(0);
   useEffect(() => {
@@ -431,7 +410,7 @@ function FloatText({ f, onDone }: { f: Floater; onDone: (id: number) => void }) 
     <group ref={ref}>
       <Html center zIndexRange={[9, 0]} style={{ pointerEvents: 'none' }}>
         <div className={styles.float} data-tone={f.tone}>
-          {f.text}
+          {text}
         </div>
       </Html>
     </group>
@@ -523,7 +502,7 @@ function FxDirector() {
           for (const i of [e.a, e.b]) emit({ pos: live.tokens[i].clone().setY(0.4), count: 30, color: EL_COLOR.flux, speed: 1.4, up: 1, life: 1, size: 0.1 });
           break;
         case 'float':
-          addF.push({ id, at: e.at, text: e.text, tone: e.tone });
+          addF.push({ id, at: e.at, key: e.key, n: e.n, tone: e.tone });
           break;
       }
     }

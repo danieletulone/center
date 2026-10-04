@@ -1,6 +1,15 @@
 import type { MetadataRoute } from 'next';
+import { LOCALES } from '@/i18n/config';
+import { SITE, languageAlternates } from '@/lib/site';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://center.waract.game';
-  return ['', '/play', '/codex', '/rules'].map((p) => ({ url: `${site}${p}`, changeFrequency: 'monthly', priority: p === '' ? 1 : 0.7 }));
+  const paths = ['', '/play', '/codex', '/rules'];
+  return paths.flatMap((p) =>
+    LOCALES.map((l) => ({
+      url: `${SITE}/${l}${p}`,
+      changeFrequency: 'monthly' as const,
+      priority: p === '' ? 1 : 0.7,
+      alternates: { languages: languageAlternates(p) },
+    })),
+  );
 }

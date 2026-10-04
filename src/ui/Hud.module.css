@@ -879,6 +879,14 @@
   text-indent: 0.3em;
   text-transform: uppercase;
 }
+.menuLang {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 6px;
+  border-bottom: 1px solid var(--border-hairline);
+}
 .menuGroup {
   width: 100%;
   display: flex;

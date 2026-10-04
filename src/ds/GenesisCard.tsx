@@ -50,6 +50,8 @@ export interface GenesisCardProps {
   width?: number;
   style?: CSSProperties;
   className?: string;
+  /** localized face labels */
+  labels?: { genesis: string; temperament: string; trigger: string; effect: string; selfCost: string };
 }
 
 /**
@@ -57,8 +59,9 @@ export interface GenesisCardProps {
  * its trigger is met. Double bone frame, temperament glyph, and
  * trigger / effect / self-cost blocks.
  */
-export function GenesisCard({ temperament, icon, title, trigger, effect, selfCost, width = 300, style, className }: GenesisCardProps) {
+export function GenesisCard({ temperament, icon, title, trigger, effect, selfCost, width = 300, style, className, labels }: GenesisCardProps) {
   const s = width / 300;
+  const L = labels ?? { genesis: 'Genesis', temperament: TEMPER_LABEL[temperament], trigger: 'Trigger', effect: 'Effect', selfCost: 'Self-Cost' };
   return (
     <div
       className={className}
@@ -80,13 +83,13 @@ export function GenesisCard({ temperament, icon, title, trigger, effect, selfCos
     >
       <div style={{ textAlign: 'center', lineHeight: 1 }}>
         <div style={{ fontFamily: 'var(--font-ui)', fontSize: 9 * s, letterSpacing: '0.5em', textTransform: 'uppercase', color: 'var(--graphite-400)', textIndent: '0.5em' }}>
-          Genesis
+          {L.genesis}
         </div>
         <div style={{ marginTop: 7 * s, display: 'flex', justifyContent: 'center' }}>
           <TemperamentMark temperament={temperament} size={16 * s} />
         </div>
         <div style={{ marginTop: 7 * s, fontFamily: 'var(--font-ui)', fontSize: 11 * s, letterSpacing: '0.36em', textTransform: 'uppercase', color: 'var(--bone)', textIndent: '0.36em' }}>
-          {TEMPER_LABEL[temperament]}
+          {L.temperament}
         </div>
       </div>
       <div style={{ marginTop: 12 * s, width: '80%' }}>
@@ -111,10 +114,10 @@ export function GenesisCard({ temperament, icon, title, trigger, effect, selfCos
         {title}
       </div>
       <div style={{ marginTop: 12 * s, display: 'flex', flexDirection: 'column', gap: 9 * s, width: '100%' }}>
-        <Block label="Trigger" s={s}>{trigger}</Block>
-        <Block label="Effect" s={s}>{effect}</Block>
+        <Block label={L.trigger} s={s}>{trigger}</Block>
+        <Block label={L.effect} s={s}>{effect}</Block>
         {selfCost ? (
-          <Block label="Self-Cost" ink="var(--fire-ember)" s={s}>
+          <Block label={L.selfCost} ink="var(--fire-ember)" s={s}>
             {selfCost}
           </Block>
         ) : null}

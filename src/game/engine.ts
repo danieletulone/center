@@ -20,6 +20,9 @@ import {
   type FxEvent,
   type GameState,
   type GenesisCardDef,
+  type LogKey,
+  type LogParams,
+  type ReasonKey,
   type PlayIntent,
   type Player,
   type Pool,
@@ -61,18 +64,9 @@ function shuffleInPlace<T>(g: GameState, arr: T[]): T[] {
 const emptyPool = (): Pool => ({ fire: 0, ice: 0, arcane: 0, flux: 0 });
 export const poolTotal = (p: Pool) => p.fire + p.ice + p.arcane + p.flux;
 
-/** Second person for the local player when they kept the default name. */
-function you(p: Player) {
-  return p.human && p.name.toLowerCase() === 'you';
-}
-const verb = (p: Player, third: string, second: string) => (you(p) ? second : third);
-const nm = (p: Player) => (you(p) ? 'you' : p.name);
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const poss = (p: Player) => (you(p) ? 'your' : `${p.name}'s`);
-
-function log(g: GameState, actor: number, text: string, tone?: Element | 'mono' | 'system') {
+function log(g: GameState, actor: number, key: LogKey, p: LogParams, tone?: Element | 'mono' | 'system') {
   g.logSeq += 1;
-  g.log.push({ id: g.logSeq, round: g.round, actor, text, tone });
+  g.log.push({ id: g.logSeq, round: g.round, actor, key, p, tone });
   if (g.log.length > 120) g.log.splice(0, g.log.length - 120);
 }
 function fx(g: GameState, e: FxEvent) {
@@ -190,11 +184,12 @@ const NAMES: { name: string; persona: Personality }[] = [
   { name: 'John', persona: 'warden' },
 ];
 
-function newPlayer(index: number, name: string, human: boolean, persona: Personality): Player {
+function newPlayer(index: number, name: string, human: boolean, persona: Personality, defaultName = false): Player {
   return {
     index,
     name,
     human,
+    defaultName,
     seat: index,
     pull: 0,
     hand: [],
@@ -271,13 +266,14 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     difficulty: opts.difficulty ?? 'adept',
   };
   // seat order: 0 south (you) · 1 west · 2 north · 3 east (clockwise turn order)
-  g.players.push(newPlayer(0, (opts.playerName || 'You').slice(0, 12), true, 'human'));
+  const custom = (opts.playerName ?? '').trim().slice(0, 12);
+  g.players.push(newPlayer(0, custom || 'You', true, 'human', !custom));
   NAMES.forEach((n, i) => g.players.push(newPlayer(i + 1, n.name, false, n.persona)));
   for (const p of g.players) {
     p.deck = buildDeck(g, p.personality);
     draw(g, p, HAND_START + (p.index >= 2 ? 1 : 0), true); // later seats get a card of tempo compensation
   }
-  log(g, -1, `The Center wakes. First to a pull of ${WIN_PULL} claims it.`, 'system');
+  log(g, -1, 'wake', { n: WIN_PULL }, 'system');
   startTurn(g);
   return g;
 }
@@ -290,7 +286,7 @@ export function draw(g: GameState, p: Player, n: number, quiet = false) {
       if (!p.discard.length) break;
       p.deck = shuffleInPlace(g, p.discard.filter((c) => CARD_BY_ID[c.id].kind === 'base'));
       p.discard = [];
-      if (!quiet) log(g, p.index, `${p.name} ${verb(p, 'reshuffles', 'reshuffle')} the discard.`, 'system');
+      if (!quiet) log(g, p.index, 'reshuffle', { a: p.index }, 'system');
     }
     const c = p.deck.pop();
     if (c) {
@@ -413,12 +409,12 @@ interface PullOpts {
 function gainPull(g: GameState, p: Player, amount: number, o: PullOpts = {}): number {
   let a = amount;
   if (active(g, p, 'plagueCaster')) {
-    log(g, p.index, `${cap(poss(p))} plague forbids pulling.`, 'mono');
+    log(g, p.index, 'plagueForbids', { a: p.index }, 'mono');
     return 0;
   }
   if (!o.surge && g.turnSeq < g.whiteoutUntil) {
-    log(g, p.index, `Whiteout swallows ${poss(p)} pull.`, 'ice');
-    fx(g, { kind: 'float', at: p.index, text: 'WHITEOUT', tone: 'ice' });
+    log(g, p.index, 'whiteoutSwallows', { a: p.index }, 'ice');
+    fx(g, { kind: 'float', at: p.index, key: 'whiteout', tone: 'ice' });
     return 0;
   }
   if (p.passives.ascension) a += 1;
@@ -426,7 +422,7 @@ function gainPull(g: GameState, p: Player, amount: number, o: PullOpts = {}): nu
   if (p.passives.patience) {
     a *= 2;
     p.passives.patience = false;
-    log(g, p.index, `Patience doubles ${poss(p)} pull.`, 'mono');
+    log(g, p.index, 'patienceDoubles', { a: p.index }, 'mono');
   }
   if (!o.surge) {
     const chill = active(g, p, 'chill');
@@ -445,7 +441,7 @@ function gainPull(g: GameState, p: Player, amount: number, o: PullOpts = {}): nu
   }
   if (a > 0) {
     fx(g, { kind: 'pull', at: p.index, element: o.element ?? 'flux', power: a });
-    fx(g, { kind: 'float', at: p.index, text: `+${a}`, tone: 'good' });
+    fx(g, { kind: 'float', at: p.index, key: 'gain', n: a, tone: 'good' });
   }
   return a;
 }
@@ -471,15 +467,15 @@ function push(g: GameState, src: Player, t: Player, amount: number, o: PushOpts)
   if (!o.ignoreDefense) {
     if (active(g, t, 'aegis') || active(g, t, 'immune')) {
       t.track.blockedTotal += a;
-      log(g, t.index, `${cap(poss(t))} ${active(g, t, 'aegis') ? 'Aegis' : 'Bulwark'} turns the blow aside.`, 'arcane');
+      log(g, t.index, 'blockAside', { a: t.index, c: active(g, t, 'aegis') ? 'aegis' : 'bulwark' }, 'arcane');
       fx(g, { kind: 'block', at: t.index });
-      fx(g, { kind: 'float', at: t.index, text: 'BLOCKED', tone: 'arcane' });
+      fx(g, { kind: 'float', at: t.index, key: 'blocked', tone: 'arcane' });
       return 0;
     }
     const reflect = active(g, t, 'reflect');
     if (reflect && !o.noReflect) {
       removeStatus(t, reflect);
-      log(g, t.index, `${cap(poss(t))} Mirror reflects it back at ${nm(src)}.`, 'arcane');
+      log(g, t.index, 'mirrorReflects', { a: t.index, x: src.index }, 'arcane');
       fx(g, { kind: 'block', at: t.index });
       return push(g, t, src, amount, { ...o, noReflect: true, targeted: false });
     }
@@ -489,15 +485,15 @@ function push(g: GameState, src: Player, t: Player, amount: number, o: PushOpts)
       const others = g.players.filter((x) => x.index !== t.index && x.index !== src.index);
       const victim = others.sort((x, y) => y.pull - x.pull)[0];
       if (victim) {
-        log(g, t.index, `${cap(poss(t))} Magnius redirects the attack onto ${nm(victim)}.`, 'arcane');
+        log(g, t.index, 'magniusRedirects', { a: t.index, x: victim.index }, 'arcane');
         fx(g, { kind: 'block', at: t.index });
         return push(g, src, victim, amount, { ...o, noReflect: true, targeted: false });
       }
     }
   }
   if (t.passives.equilibrium && isLeader(g, src)) {
-    log(g, t.index, `${t.name} ${verb(t, 'rests', 'rest')} in Equilibrium — the leader cannot touch ${you(t) ? 'you' : 'them'}.`, 'mono');
-    fx(g, { kind: 'float', at: t.index, text: 'IMMUNE', tone: 'neutral' });
+    log(g, t.index, 'equilibriumRests', { a: t.index }, 'mono');
+    fx(g, { kind: 'float', at: t.index, key: 'immune', tone: 'neutral' });
     return 0;
   }
   // amplifiers
@@ -506,7 +502,7 @@ function push(g: GameState, src: Player, t: Player, amount: number, o: PushOpts)
   if (o.element !== 'mono' && t.track.lastElement && ELEMENT_BEATS[o.element] === t.track.lastElement) {
     a += 1;
     src.track.triangleWins += 1;
-    fx(g, { kind: 'float', at: t.index, text: 'TRIANGLE +1', tone: o.element });
+    fx(g, { kind: 'float', at: t.index, key: 'triangle', n: 1, tone: o.element });
   }
   if (t.passives.citadel) a = Math.ceil(a / 2);
   // shields
@@ -520,7 +516,7 @@ function push(g: GameState, src: Player, t: Player, amount: number, o: PushOpts)
       if (sh.value <= 0) removeStatus(t, sh);
       if (absorbed) {
         fx(g, { kind: 'block', at: t.index });
-        fx(g, { kind: 'float', at: t.index, text: `BLOCK ${absorbed}`, tone: 'arcane' });
+        fx(g, { kind: 'float', at: t.index, key: 'block', n: absorbed, tone: 'arcane' });
       }
     }
   }
@@ -531,13 +527,13 @@ function push(g: GameState, src: Player, t: Player, amount: number, o: PushOpts)
   src.track.pushThisRound += a;
   if (a > 0) {
     fx(g, { kind: 'burst', at: t.index, element: o.element, power: a });
-    fx(g, { kind: 'float', at: t.index, text: `−${a}`, tone: 'bad' });
+    fx(g, { kind: 'float', at: t.index, key: 'loss', n: a, tone: 'bad' });
   }
   // counterweight
   const counter = active(g, t, 'counter');
   if (counter && !o.noCounter) {
     removeStatus(t, counter);
-    log(g, t.index, `${cap(poss(t))} Counterweight swings back at ${nm(src)}.`, 'arcane');
+    log(g, t.index, 'counterSwings', { a: t.index, x: src.index }, 'arcane');
     push(g, t, src, counter.value, { element: 'arcane', noCounter: true, noReflect: true });
   }
   return a;
@@ -580,7 +576,7 @@ function checkGenesis(g: GameState) {
       if (GENESIS_TRIGGERS[gc.id]?.(g, p)) {
         p.genesisEarned.push(gc.id);
         p.hand.push(inst(gc.id));
-        log(g, p.index, `GENESIS — ${gc.title} materialises in ${poss(p)} hand.`, 'mono');
+        log(g, p.index, 'genesisMaterialises', { a: p.index, c: gc.id }, 'mono');
         fx(g, { kind: 'genesis', at: p.index, card: gc.id });
       }
     }
@@ -609,8 +605,8 @@ function startTurn(g: GameState) {
   const skip = active(g, p, 'skipTurn');
   if (skip) {
     removeStatus(p, skip);
-    log(g, p.index, `${p.name} ${verb(p, 'pays', 'pay')} Famine's price and ${verb(p, 'skips', 'skip')} the turn.`, 'mono');
-    fx(g, { kind: 'float', at: p.index, text: 'SKIPPED', tone: 'neutral' });
+    log(g, p.index, 'famineSkip', { a: p.index }, 'mono');
+    fx(g, { kind: 'float', at: p.index, key: 'skipped', tone: 'neutral' });
     endTurn(g, true);
     return;
   }
@@ -618,18 +614,18 @@ function startTurn(g: GameState) {
   // lingering harm
   for (const b of activeAll(g, p, 'burn')) {
     const src = g.players[b.source ?? p.index];
-    log(g, p.index, `Pyre's burn sears ${nm(p)}.`, 'fire');
+    log(g, p.index, 'burnSears', { a: p.index }, 'fire');
     push(g, src, p, b.value, { element: 'fire', bolt: false, ignoreDefense: true, noCounter: true, noReflect: true });
     removeStatus(p, b);
   }
   const plague = active(g, p, 'plague');
   if (plague) {
     const src = g.players[plague.source ?? p.index];
-    log(g, p.index, `Plague gnaws ${poss(p)} pull.`, 'mono');
+    log(g, p.index, 'plagueGnaws', { a: p.index }, 'mono');
     push(g, src, p, plague.value, { element: 'mono', bolt: false, ignoreDefense: true, noCounter: true, noReflect: true });
   }
   if (p.passives.tide) {
-    log(g, p.index, `The Tide draws the Center toward ${nm(p)}.`, 'mono');
+    log(g, p.index, 'tideDraws', { a: p.index }, 'mono');
     gainPull(g, p, 1, { element: 'mono' });
   }
 
@@ -647,7 +643,7 @@ function startTurn(g: GameState) {
     p.pool = emptyPool();
   }
   if (active(g, p, 'cryoBind')) {
-    log(g, p.index, `Cryo Bind: ${poss(p)} elements do not refresh.`, 'ice');
+    log(g, p.index, 'cryoBindNoRefresh', { a: p.index }, 'ice');
     fx(g, { kind: 'freeze', at: p.index });
   } else {
     for (const e of ELEMENTS) p.pool[e] += 1;
@@ -677,12 +673,12 @@ function startTurn(g: GameState) {
       p.track.generatedTotal += bonus.value;
       removeStatus(p, bonus);
     }
-    if (active(g, p, 'genDown')) fx(g, { kind: 'float', at: p.index, text: 'ICED', tone: 'ice' });
+    if (active(g, p, 'genDown')) fx(g, { kind: 'float', at: p.index, key: 'iced', tone: 'ice' });
   }
   const famine = active(g, p, 'skipDraw');
   if (famine) {
     removeStatus(p, famine);
-    log(g, p.index, `${p.name} ${verb(p, 'skips', 'skip')} the draw.`, 'system');
+    log(g, p.index, 'skipDraw', { a: p.index }, 'system');
   } else {
     draw(g, p, DRAW_PER_TURN);
   }
@@ -739,7 +735,7 @@ export function endTurn(g: GameState, skipped = false) {
       const top = ranking(g)[0];
       g.phase = 'over';
       g.winner = top.index;
-      log(g, top.index, `The ${MAX_ROUNDS}th round closes. ${top.name} ${verb(top, 'holds', 'hold')} the Center.`, 'system');
+      log(g, top.index, 'roundCap', { n: MAX_ROUNDS, a: top.index }, 'system');
       return;
     }
   }
@@ -752,7 +748,7 @@ function checkWin(g: GameState) {
   if (champ) {
     g.phase = 'over';
     g.winner = champ.index;
-    log(g, champ.index, `${champ.name} ${verb(champ, 'claims', 'claim')} the Center.`, 'system');
+    log(g, champ.index, 'claims', { a: champ.index }, 'system');
     fx(g, { kind: 'shockwave', element: 'mono' });
   }
 }
@@ -760,7 +756,8 @@ function checkWin(g: GameState) {
 /* ---------------- legality ---------------- */
 export interface PlayCheck {
   ok: boolean;
-  reason?: string;
+  reason?: ReasonKey;
+  n?: number;
 }
 
 const SEAT_MOVERS = new Set(['sidestep', 'flank', 'rotate', 'pivot', 'displace', 'blindside']);
@@ -800,44 +797,44 @@ export function legalTargets(g: GameState, p: Player, id: string): number[] {
 }
 
 export function canPlay(g: GameState, pIdx: number, uid: string): PlayCheck {
-  if (g.phase !== 'playing') return { ok: false, reason: 'The match is over' };
-  if (g.current !== pIdx) return { ok: false, reason: 'Not your turn' };
+  if (g.phase !== 'playing') return { ok: false, reason: 'over' };
+  if (g.current !== pIdx) return { ok: false, reason: 'notTurn' };
   const p = g.players[pIdx];
   const c = p.hand.find((h) => h.uid === uid);
-  if (!c) return { ok: false, reason: 'Card not in hand' };
+  if (!c) return { ok: false, reason: 'notInHand' };
   const def = cardDef(c.id);
   const lock = activeAll(g, p, 'locked').find((s) => s.ref === uid);
-  if (lock) return { ok: false, reason: 'Frost-locked' };
-  if (g.maneuverUsed) return { ok: false, reason: 'Your maneuver ended the turn' };
+  if (lock) return { ok: false, reason: 'locked' };
+  if (g.maneuverUsed) return { ok: false, reason: 'maneuverUsed' };
   if (def.kind === 'base') {
-    if (g.playsThisTurn >= playsAllowed(g, p)) return { ok: false, reason: `No plays left (${playsAllowed(g, p)} this turn)` };
-    if (!canAfford(p, def)) return { ok: false, reason: 'Not enough elements' };
-    if (def.category === 'Defensive' && active(g, p, 'numb')) return { ok: false, reason: 'Numbed — no defense' };
+    if (g.playsThisTurn >= playsAllowed(g, p)) return { ok: false, reason: 'noPlays', n: playsAllowed(g, p) };
+    if (!canAfford(p, def)) return { ok: false, reason: 'noElements' };
+    if (def.category === 'Defensive' && active(g, p, 'numb')) return { ok: false, reason: 'numbed' };
     if (isSeatMover(def.id)) {
-      if (g.playsThisTurn > 0) return { ok: false, reason: 'Maneuvers must open your turn' };
-      if (!canMove(g, p) && def.id !== 'displace' && def.id !== 'pivot') return { ok: false, reason: 'You cannot move' };
-      if (g.turnSeq < g.lockstepUntil) return { ok: false, reason: 'Lockstep Field holds every seat' };
+      if (g.playsThisTurn > 0) return { ok: false, reason: 'maneuverFirst' };
+      if (!canMove(g, p) && def.id !== 'displace' && def.id !== 'pivot') return { ok: false, reason: 'cantMove' };
+      if (g.turnSeq < g.lockstepUntil) return { ok: false, reason: 'lockstep' };
     }
     switch (def.id) {
       case 'finalPush':
-        if (p.pull < WIN_PULL - 3) return { ok: false, reason: `Needs pull ${WIN_PULL - 3}+` };
+        if (p.pull < WIN_PULL - 3) return { ok: false, reason: 'needPull', n: WIN_PULL - 3 };
         break;
       case 'gambit':
-        if (p.hand.length < 4) return { ok: false, reason: 'Needs 3 other cards' };
+        if (p.hand.length < 4) return { ok: false, reason: 'needCards', n: 3 };
         break;
       case 'overheat':
       case 'blindside':
-        if (!leaderExcluding(g, p) || isLeader(g, p)) return { ok: false, reason: 'You are the leader' };
+        if (!leaderExcluding(g, p) || isLeader(g, p)) return { ok: false, reason: 'youLead' };
         break;
       case 'rotate':
-        if (g.players.some((x) => !canMove(g, x))) return { ok: false, reason: 'A seat is anchored' };
+        if (g.players.some((x) => !canMove(g, x))) return { ok: false, reason: 'anchored' };
         break;
     }
     if (def.id === 'blindside') {
       const l = leaderExcluding(g, p)!;
       const adj = neighbours(g, l).some((n) => n.index === p.index);
       if (!adj && !neighbours(g, l).some((n) => n.index !== p.index && canMove(g, n)) && canMove(g, p)) {
-        return { ok: false, reason: 'No seat beside the leader' };
+        return { ok: false, reason: 'noSeat' };
       }
     }
   } else {
@@ -846,7 +843,7 @@ export function canPlay(g: GameState, pIdx: number, uid: string): PlayCheck {
   if (def.target !== 'none') {
     const ts = legalTargets(g, p, def.id);
     const need = def.target === 'two-others' ? 2 : 1;
-    if (ts.length < need) return { ok: false, reason: def.target === 'opponent' ? 'No target in reach' : 'No legal seat' };
+    if (ts.length < need) return { ok: false, reason: def.target === 'opponent' ? 'noTarget' : 'noLegalSeat' };
   }
   return { ok: true };
 }
@@ -880,7 +877,7 @@ const EFFECTS: Record<string, Effect> = {
   explosive: (c) => {
     push(c.g, c.me, c.t[0], 4, { element: 'fire', targeted: true });
     c.me.pull -= 1;
-    fx(c.g, { kind: 'float', at: c.me.index, text: 'BACKLASH −1', tone: 'bad' });
+    fx(c.g, { kind: 'float', at: c.me.index, key: 'backlash', n: 1, tone: 'bad' });
   },
   salvo: (c) => opponents(c.g, c.me).forEach((t) => push(c.g, c.me, t, 1, { element: 'fire' })),
   cinder: (c) => {
@@ -914,13 +911,13 @@ const EFFECTS: Record<string, Effect> = {
     const t = c.t[0];
     addStatus(t, { kind: 'marked', value: 1, expires: c.g.turnSeq + SEATS * 2, source: c.me.index });
     fx(c.g, { kind: 'bolt', from: c.me.index, to: t.index, element: 'fire', power: 1 });
-    fx(c.g, { kind: 'float', at: t.index, text: 'MARKED', tone: 'fire' });
+    fx(c.g, { kind: 'float', at: t.index, key: 'marked', tone: 'fire' });
   },
   chainFire: (c) => {
     const t = c.t[0];
     push(c.g, c.me, t, 2, { element: 'fire', targeted: true });
     if (t.track.pulledLastTurn) {
-      log(c.g, c.me.index, `Chain Fire catches ${poss(t)} pull — push 2 more.`, 'fire');
+      log(c.g, c.me.index, 'chainCatches', { a: c.me.index, t: t.index, n: 2 }, 'fire');
       push(c.g, c.me, t, 2, { element: 'fire', bolt: true });
     }
   },
@@ -935,7 +932,7 @@ const EFFECTS: Record<string, Effect> = {
     t.passives.generators[e] = Math.max(0, t.passives.generators[e] - 1);
     fx(c.g, { kind: 'bolt', from: c.me.index, to: t.index, element: 'fire', power: 2 });
     fx(c.g, { kind: 'burst', at: t.index, element: 'fire', power: 2 });
-    fx(c.g, { kind: 'float', at: t.index, text: 'GENERATOR LOST', tone: 'bad' });
+    fx(c.g, { kind: 'float', at: t.index, key: 'generatorLost', tone: 'bad' });
     c.me.track.attackedThisTurnAny = true;
   },
 
@@ -1059,7 +1056,7 @@ const EFFECTS: Record<string, Effect> = {
     const tmp = a.pull;
     a.pull = b.pull;
     b.pull = tmp;
-    log(c.g, c.me.index, `Reversal: ${a.name} and ${b.name} trade places on the tug.`, 'flux');
+    log(c.g, c.me.index, 'reversal', { a: a.index, x: b.index }, 'flux');
     fx(c.g, { kind: 'shockwave', element: 'flux' });
   },
   gambit: (c) => {
@@ -1158,7 +1155,7 @@ const EFFECTS: Record<string, Effect> = {
     const amt = Math.max(1, c.me.track.strongestAttack) + c.empower;
     opponents(c.g, c.me).forEach((t) => push(c.g, c.me, t, amt, { element: 'mono' }));
     c.me.pull -= 2;
-    fx(c.g, { kind: 'float', at: c.me.index, text: 'BACKLASH −2', tone: 'bad' });
+    fx(c.g, { kind: 'float', at: c.me.index, key: 'backlash', n: 2, tone: 'bad' });
   },
   sacrifice: (c) => {
     const l = leaderExcluding(c.g, c.me)!;
@@ -1211,15 +1208,15 @@ function intercepted(g: GameState, me: Player, t: Player, def: CardDef): boolean
   const phase = active(g, t, 'phase');
   if (phase) {
     removeStatus(t, phase);
-    log(g, t.index, `${t.name} ${verb(t, 'phases', 'phase')} out — ${def.title} passes through.`, 'arcane');
-    fx(g, { kind: 'float', at: t.index, text: 'PHASED', tone: 'arcane' });
+    log(g, t.index, 'phased', { a: t.index, c: def.id }, 'arcane');
+    fx(g, { kind: 'float', at: t.index, key: 'phased', tone: 'arcane' });
     fx(g, { kind: 'bolt', from: me.index, to: t.index, element: def.kind === 'base' ? def.element : 'mono', power: 1 });
     return true;
   }
   if (def.kind === 'base' && def.category === 'Control' && active(g, t, 'staticField')) {
-    log(g, t.index, `${cap(poss(t))} Static Field cancels ${def.title}.`, 'arcane');
+    log(g, t.index, 'staticCancels', { a: t.index, c: def.id }, 'arcane');
     fx(g, { kind: 'block', at: t.index });
-    fx(g, { kind: 'float', at: t.index, text: 'CANCELLED', tone: 'arcane' });
+    fx(g, { kind: 'float', at: t.index, key: 'cancelled', tone: 'arcane' });
     return true;
   }
   return false;
@@ -1235,7 +1232,7 @@ export function play(g: GameState, pIdx: number, intent: PlayIntent): PlayCheck 
   const legal = legalTargets(g, me, def.id);
   const need = def.target === 'none' ? 0 : def.target === 'two-others' ? 2 : 1;
   const targets = intent.targets.filter((t, i, a) => legal.includes(t) && a.indexOf(t) === i).slice(0, need);
-  if (targets.length < need) return { ok: false, reason: 'Choose a target' };
+  if (targets.length < need) return { ok: false, reason: 'chooseTarget' };
 
   // pay + move card
   if (def.kind === 'base') {
@@ -1249,15 +1246,15 @@ export function play(g: GameState, pIdx: number, intent: PlayIntent): PlayCheck 
 
   const tPlayers = targets.map((i) => g.players[i]);
   const tone = def.kind === 'base' ? def.element : 'mono';
-  const tText = tPlayers.length ? ` → ${tPlayers.map((t) => (you(t) ? 'you' : t.name)).join(' & ')}` : '';
-  log(g, me.index, `${me.name} ${verb(me, 'plays', 'play')} ${def.title}${tText}.`, tone);
+  if (tPlayers.length) log(g, me.index, 'playsOn', { a: me.index, c: def.id, ts: targets }, tone);
+  else log(g, me.index, 'plays', { a: me.index, c: def.id }, tone);
 
   let empower = 0;
   if (def.kind === 'genesis') {
     const beats: Temperament = TEMPER_BEATS[def.temperament];
     if (opponents(g, me).some((o) => o.genesisPlayed.includes(beats))) {
       empower = 2;
-      log(g, me.index, `${def.temperament.toUpperCase()} overruns ${beats.toUpperCase()} — empowered.`, 'mono');
+      log(g, me.index, 'empowered', { temper: def.temperament, beats }, 'mono');
     }
   }
 
@@ -1266,7 +1263,7 @@ export function play(g: GameState, pIdx: number, intent: PlayIntent): PlayCheck 
 
   if (def.kind === 'base' && isSeatMover(def.id)) {
     g.maneuverUsed = true;
-    log(g, me.index, `The maneuver consumes ${poss(me)} turn.`, 'system');
+    log(g, me.index, 'maneuverConsumes', { a: me.index }, 'system');
   }
   checkGenesis(g);
   checkWin(g);
@@ -1276,39 +1273,6 @@ export function play(g: GameState, pIdx: number, intent: PlayIntent): PlayCheck 
 /** Elements a player can see coming next turn (for HUD). */
 export function projectedGen(p: Player) {
   return SEATS + BASE_ATTUNED + p.passives.extraGen + poolTotal(p.passives.generators);
-}
-
-export function describeStatus(s: Status): { label: string; tone: Element | 'mono' } {
-  const map: Record<StatusKind, [string, Element | 'mono']> = {
-    shield: [`Shield ${s.value}`, 'arcane'],
-    immune: ['Bulwark', 'arcane'],
-    aegis: ['Aegis', 'arcane'],
-    floor: [`Anchored ≥${s.value}`, 'arcane'],
-    redirect: ['Magnius', 'arcane'],
-    reflect: ['Mirror', 'arcane'],
-    staticField: ['Static', 'arcane'],
-    phase: ['Phase', 'arcane'],
-    counter: ['Counter', 'arcane'],
-    marked: ['Marked', 'fire'],
-    burn: ['Burn', 'fire'],
-    frozen: ['Frozen', 'ice'],
-    locked: ['Frost Lock', 'ice'],
-    chill: [`Chill −${s.value}`, 'ice'],
-    glacier: ['Glacier', 'ice'],
-    numb: ['Numb', 'ice'],
-    genDown: [`Iced −${s.value}`, 'ice'],
-    cryoBind: ['Cryo Bind', 'ice'],
-    genBonus: [`Radiation +${s.value}`, 'flux'],
-    skipDraw: ['No draw', 'flux'],
-    anchorSeat: ['Anchored seat', 'arcane'],
-    encircle: ['Encircle', 'flux'],
-    vantage: ['Vantage', 'flux'],
-    plague: ['Plague', 'mono'],
-    plagueCaster: ['Plague-bound', 'mono'],
-    skipTurn: ['Skips turn', 'mono'],
-  };
-  const [label, tone] = map[s.kind];
-  return { label, tone };
 }
 
 export function activeStatuses(g: GameState, p: Player) {

@@ -10,32 +10,50 @@ import { Label } from '@/ds/Label';
 import { StarRating } from '@/ds/StarRating';
 import { sfx } from '@/lib/audio';
 import { useStored } from '@/lib/useStored';
+import { DICTIONARIES } from '@/i18n';
+import { useI18n } from '@/i18n/I18nProvider';
+import { LangSwitch } from './LangSwitch';
 import { Hud } from './Hud';
 import styles from './Play.module.css';
 
 const GameScene = dynamic(() => import('@/three/GameScene'), {
   ssr: false,
-  loading: () => (
-    <div className={styles.loading}>
-      <span className={styles.loadingOrb} />
-      <Label size="micro" color="secondary">The Center gathers</Label>
-    </div>
-  ),
+  loading: () => <Loading />,
 });
 
-const LEVELS: { id: Difficulty; name: string; sub: string; stars: number }[] = [
-  { id: 'initiate', name: 'Initiate', sub: 'Rivals hesitate and err', stars: 1 },
-  { id: 'adept', name: 'Adept', sub: 'A fair contest', stars: 2 },
-  { id: 'archon', name: 'Archon', sub: 'They will not blink', stars: 3 },
+function Loading() {
+  const { d } = useI18n();
+  return (
+    <div className={styles.loading}>
+      <span className={styles.loadingOrb} />
+      <Label size="micro" color="secondary">{d.setup.loading}</Label>
+    </div>
+  );
+}
+
+const LEVELS: { id: Difficulty; stars: number }[] = [
+  { id: 'initiate', stars: 1 },
+  { id: 'adept', stars: 2 },
+  { id: 'archon', stars: 3 },
 ];
 
+const RIVALS = [
+  { name: 'Albert', persona: 'aggressor' },
+  { name: 'Sophia', persona: 'trickster' },
+  { name: 'John', persona: 'warden' },
+] as const;
+
+/** A typed name equal to "You" in any language means "keep the default". */
+const DEFAULT_NAMES = Object.values(DICTIONARIES).map((x) => x.common.you.toLowerCase());
+
 function Setup() {
+  const { d, href } = useI18n();
   const start = useGame((s) => s.start);
   const storedName = useStored('center.name');
   const storedLevel = useStored('center.level') as Difficulty | null;
   const [nameEdit, setName] = useState<string | null>(null);
   const [levelPick, setLevel] = useState<Difficulty | null>(null);
-  const name = nameEdit ?? storedName ?? 'You';
+  const name = nameEdit ?? (storedName && !DEFAULT_NAMES.includes(storedName.toLowerCase()) ? storedName : '');
   const level: Difficulty = levelPick ?? (storedLevel && LEVELS.some((l) => l.id === storedLevel) ? storedLevel : 'adept');
   const begin = () => {
     sfx.unlock();
@@ -45,7 +63,8 @@ function Setup() {
     } catch {
       /* ignore */
     }
-    start({ difficulty: level, name: name.trim() || 'You' });
+    const custom = name.trim();
+    start({ difficulty: level, name: custom && !DEFAULT_NAMES.includes(custom.toLowerCase()) ? custom : undefined });
   };
   return (
     <div className={styles.setup}>
@@ -56,16 +75,24 @@ function Setup() {
           begin();
         }}
       >
-        <Label size="micro" color="secondary">Take a seat</Label>
-        <h1 className={styles.heading}>The Table</h1>
+        <Label size="micro" color="secondary">{d.setup.kicker}</Label>
+        <h1 className={styles.heading}>{d.setup.heading}</h1>
         <Flourish width={280} />
         <label className={styles.field}>
-          <Label size="nano" color="faint">Your name</Label>
-          <input className={styles.input} value={name} maxLength={12} onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
+          <Label size="nano" color="faint">{d.setup.name}</Label>
+          <input
+            className={styles.input}
+            value={name}
+            placeholder={d.common.you}
+            maxLength={12}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
         </label>
         <div className={styles.field}>
-          <Label size="nano" color="faint">Rivals</Label>
-          <div className={styles.levels} role="radiogroup" aria-label="Difficulty">
+          <Label size="nano" color="faint">{d.setup.rivals}</Label>
+          <div className={styles.levels} role="radiogroup" aria-label={d.setup.difficulty}>
             {LEVELS.map((l) => (
               <button
                 type="button"
@@ -79,24 +106,27 @@ function Setup() {
                 }}
               >
                 <StarRating value={l.stars} max={3} size={11} gap={4} color={level === l.id ? 'var(--bone)' : 'var(--graphite-500)'} />
-                <span className={styles.levelName}>{l.name}</span>
-                <span className={styles.levelSub}>{l.sub}</span>
+                <span className={styles.levelName}>{d.setup.levels[l.id].name}</span>
+                <span className={styles.levelSub}>{d.setup.levels[l.id].sub}</span>
               </button>
             ))}
           </div>
         </div>
         <div className={styles.rivals}>
-          <span>Albert <em>the Aggressor</em></span>
-          <span>Sophia <em>the Trickster</em></span>
-          <span>John <em>the Warden</em></span>
+          {RIVALS.map((r) => (
+            <span key={r.name}>
+              {r.name} <em>{d.setup.personas[r.persona]}</em>
+            </span>
+          ))}
         </div>
         <div className={styles.actions}>
           <Button variant="frame" type="submit">
-            Begin
+            {d.setup.begin}
           </Button>
-          <Link href="/">
-            <Button size="label">Back</Button>
+          <Link href={href('/')}>
+            <Button size="label">{d.common.back}</Button>
           </Link>
+          <LangSwitch />
         </div>
       </form>
     </div>

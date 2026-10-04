@@ -13,12 +13,15 @@ import {
   WIN_PULL,
   canPlay,
   convergence,
-  describeStatus,
   activeStatuses,
   playsAllowed,
   ranking,
 } from '@/game/engine';
-import { ELEMENTS, ELEMENT_NAME, type GameState } from '@/game/types';
+import { ELEMENTS, type GameState, type StatusKind } from '@/game/types';
+import { fmt, plural } from '@/i18n';
+import { useI18n } from '@/i18n/I18nProvider';
+import { cardTitle, formatLog, playerName, reasonText, statusText } from '@/i18n/game';
+import { LangSwitch } from './LangSwitch';
 import { Card } from '@/ds/Card';
 import { ElementOrb } from '@/ds/ElementOrb';
 import { Flourish } from '@/ds/Flourish';
@@ -30,30 +33,40 @@ import { HoloCard } from './HoloCard';
 import { sfx } from '@/lib/audio';
 import styles from './Hud.module.css';
 
+const ICE: StatusKind[] = ['frozen', 'locked', 'chill', 'glacier', 'numb', 'cryoBind', 'genDown'];
+function statusTone(k: StatusKind) {
+  if (ICE.includes(k)) return 'ice';
+  if (k === 'marked' || k === 'burn') return 'fire';
+  if (k === 'genBonus' || k === 'skipDraw' || k === 'encircle' || k === 'vantage') return 'flux';
+  if (k === 'plague' || k === 'plagueCaster' || k === 'skipTurn') return 'mono';
+  return 'arcane';
+}
+
 /* ---------------- top bar ---------------- */
 function TopBar({ onMenu }: { onMenu: () => void }) {
   const g = useGame((s) => s.game)!;
+  const { d } = useI18n();
   const conv = convergence(g);
   const nextConv = CONVERGENCE_ROUNDS.find((r) => r > g.round);
   return (
     <div className={styles.top}>
       <div className={styles.turnBox}>
-        <Label size="nano" color="faint">Round</Label>
+        <Label size="nano" color="faint">{d.hud.round}</Label>
         <span className={styles.turnNum}>{String(g.round).padStart(2, '0')}</span>
         <span className={styles.turnOf}>/ {MAX_ROUNDS}</span>
       </div>
       <div className={styles.goal}>
-        <Label size="nano" color="faint">First to</Label>
+        <Label size="nano" color="faint">{d.hud.firstTo}</Label>
         <span className={styles.goalNum}>{WIN_PULL}</span>
-        <Label size="nano" color="faint">pull</Label>
+        <Label size="nano" color="faint">{d.hud.pull}</Label>
         {conv > 0 ? (
-          <span className={styles.conv} title="Convergence: every pull grows stronger">Convergence +{conv}</span>
+          <span className={styles.conv} title={d.hud.convergenceTip}>{fmt(d.hud.convergence, { n: conv })}</span>
         ) : nextConv ? (
-          <span className={styles.convSoon}>Convergence · R{nextConv}</span>
+          <span className={styles.convSoon}>{fmt(d.hud.convergenceSoon, { n: nextConv })}</span>
         ) : null}
       </div>
       <div className={styles.topRight}>
-        <button className={styles.iconBtn} onClick={onMenu} aria-label="Menu">
+        <button className={styles.iconBtn} onClick={onMenu} aria-label={d.hud.menu}>
           <span />
           <span />
           <span />
@@ -66,6 +79,7 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
 /* ---------------- chronicle ---------------- */
 function Chronicle() {
   const g = useGame((s) => s.game)!;
+  const { d } = useI18n();
   const [open, setOpen] = useState(() => typeof window === 'undefined' || (window.innerWidth >= 900 && window.innerHeight >= 600));
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -74,7 +88,7 @@ function Chronicle() {
   return (
     <aside className={[styles.chronicle, open ? '' : styles.chronicleClosed].join(' ')}>
       <button className={styles.chronHead} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <Label size="nano" color="secondary">Chronicle</Label>
+        <Label size="nano" color="secondary">{d.hud.chronicle}</Label>
         <span className={styles.chev}>{open ? '–' : '+'}</span>
       </button>
       {open && (
@@ -82,7 +96,7 @@ function Chronicle() {
           {g.log.slice(-40).map((l) => (
             <div key={l.id} className={styles.logLine} data-tone={l.tone}>
               <span className={styles.logRound}>{String(l.round).padStart(2, '0')}</span>
-              <span>{l.text}</span>
+              <span>{formatLog(l, g.players, d)}</span>
             </div>
           ))}
         </div>
@@ -94,6 +108,7 @@ function Chronicle() {
 /* ---------------- element pool ---------------- */
 function PoolBar() {
   const g = useGame((s) => s.game)!;
+  const { d } = useI18n();
   const me = g.players[0];
   const allowed = playsAllowed(g, me);
   const left = g.current === 0 ? Math.max(0, allowed - g.playsThisTurn) : allowed;
@@ -102,7 +117,7 @@ function PoolBar() {
     <div className={styles.pool}>
       <div className={styles.poolOrbs}>
         {ELEMENTS.map((e) => (
-          <div key={e} className={styles.poolItem} title={`${ELEMENT_NAME[e]} — generators +${me.passives.generators[e]}`}>
+          <div key={e} className={styles.poolItem} title={fmt(d.hud.generatorsTip, { element: d.elements[e], n: me.passives.generators[e] })}>
             <ElementOrb element={e} size={22} />
             <span className={styles.poolNum} data-zero={me.pool[e] === 0}>
               {me.pool[e]}
@@ -112,19 +127,16 @@ function PoolBar() {
         ))}
       </div>
       <div className={styles.plays}>
-        <Label size="nano" color="faint">Plays</Label>
+        <Label size="nano" color="faint">{d.hud.plays}</Label>
         <StarRating value={left} max={Math.max(allowed, 1)} size={13} gap={5} color="var(--bone)" />
       </div>
       {myStatuses.length > 0 && (
         <div className={styles.myStatus}>
-          {myStatuses.slice(0, 4).map((s, i) => {
-            const d = describeStatus(s);
-            return (
-              <span key={i} className={styles.statusChip} data-tone={d.tone}>
-                {d.label}
-              </span>
-            );
-          })}
+          {myStatuses.slice(0, 4).map((s, i) => (
+            <span key={i} className={styles.statusChip} data-tone={statusTone(s.kind)}>
+              {statusText(s.kind, s.value, d)}
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -136,6 +148,7 @@ function Hand() {
   const { g, selected, select, commit, setInspect, pendingTargets } = useGame(
     useShallow((s) => ({ g: s.game!, selected: s.selected, select: s.select, commit: s.commit, setInspect: s.setInspect, pendingTargets: s.pendingTargets })),
   );
+  const { d } = useI18n();
   const me = g.players[0];
   const myTurn = g.current === 0 && g.phase === 'playing';
   const n = me.hand.length;
@@ -164,15 +177,15 @@ function Hand() {
             selDef.id === 'rotate' ? (
               <div className={styles.promptRow}>
                 <Button variant="frame" size="label" color="flux" onClick={() => commit(-1)}>
-                  ◂ Counter-clockwise
+                  {d.hud.counterClockwise}
                 </Button>
                 <Button variant="frame" size="label" color="flux" onClick={() => commit(1)}>
-                  Clockwise ▸
+                  {d.hud.clockwise}
                 </Button>
               </div>
             ) : (
               <Button variant="frame" size="label" color={selDef.kind === 'base' ? selDef.element : 'bone'} onClick={() => commit()}>
-                Play {selDef.title}
+                {fmt(d.hud.playCard, { card: cardTitle(selDef.id, d) })}
               </Button>
             )
           ) : (
@@ -180,15 +193,15 @@ function Hand() {
               <span className={styles.targetDot} />
               <Label size="micro" color="ash">
                 {selDef.target === 'two-others'
-                  ? `Choose two players · ${pendingTargets.length}/2`
+                  ? fmt(d.hud.chooseTwo, { n: pendingTargets.length })
                   : selDef.target === 'neighbour'
-                    ? 'Choose a neighbour'
+                    ? d.hud.chooseNeighbour
                     : selDef.target === 'any-seat'
-                      ? 'Choose who to sit beside'
-                      : 'Choose a target'}
+                      ? d.hud.chooseSeat
+                      : d.hud.chooseTarget}
               </Label>
               <button className={styles.cancel} onClick={() => select(null)}>
-                Cancel
+                {d.common.cancel}
               </button>
             </div>
           )}
@@ -202,6 +215,8 @@ function Hand() {
           const rot = (i - mid) * (n > 6 ? 2.2 : 3.2);
           const lift = Math.abs(i - mid) * Math.abs(i - mid) * 2.2;
           const def = CARD_BY_ID[c.id];
+          const title = cardTitle(c.id, d);
+          const why = chk.ok ? '' : reasonText(chk.reason, chk.n, d);
           return (
             <div
               key={c.uid}
@@ -222,7 +237,7 @@ function Hand() {
                     return;
                   }
                   if (!chk.ok) {
-                    useGame.setState({ error: { id: Date.now(), text: chk.reason ?? 'Cannot play' } });
+                    useGame.setState({ error: { id: Date.now(), reason: chk.reason ?? 'cannotPlay', n: chk.n } });
                     sfx.play('deny');
                     return;
                   }
@@ -233,25 +248,25 @@ function Hand() {
                   setInspect(c.id);
                 }}
                 onMouseEnter={() => sfx.play('hover')}
-                ariaLabel={`${def.title}${chk.ok ? '' : ` — ${chk.reason}`}`}
+                ariaLabel={chk.ok ? title : `${title} — ${why}`}
               >
                 <Card id={c.id} width={cardW} />
               </HoloCard>
-              {!chk.ok && myTurn && <div className={styles.reason}>{chk.reason}</div>}
+              {!chk.ok && myTurn && <div className={styles.reason}>{why}</div>}
               <button
                 className={styles.inspectBtn}
                 onClick={(e) => {
                   e.stopPropagation();
                   setInspect(c.id);
                 }}
-                aria-label={`Inspect ${def.title}`}
+                aria-label={fmt(d.hud.inspect, { card: title })}
               >
                 ⤢
               </button>
             </div>
           );
         })}
-        {n === 0 && <div className={styles.emptyHand}>Your hand is empty</div>}
+        {n === 0 && <div className={styles.emptyHand}>{d.hud.emptyHand}</div>}
       </div>
     </div>
   );
@@ -261,12 +276,13 @@ function Hand() {
 function Hint() {
   const { g, stats, selected } = useGame(useShallow((s) => ({ g: s.game!, stats: s.stats, selected: s.selected })));
   const [dismissed, setDismissed] = useState(false);
+  const { d } = useI18n();
   if (dismissed || stats.played > 0 || g.round > 2 || g.current !== 0 || g.phase !== 'playing' || selected) return null;
   return (
     <div className={styles.hint}>
-      <Label size="nano" color="ash">Select a card · glowing rivals are in reach · right-click to inspect · Enter ends the turn</Label>
+      <Label size="nano" color="ash">{d.hud.hint}</Label>
       <button className={styles.cancel} onClick={() => setDismissed(true)}>
-        Got it
+        {d.hud.gotIt}
       </button>
     </div>
   );
@@ -275,6 +291,7 @@ function Hint() {
 /* ---------------- end turn ---------------- */
 function TurnControls() {
   const { g, endMyTurn } = useGame(useShallow((s) => ({ g: s.game!, endMyTurn: s.endMyTurn })));
+  const { d } = useI18n();
   const myTurn = g.current === 0 && g.phase === 'playing';
   const actor = g.players[g.current];
   useEffect(() => {
@@ -289,13 +306,13 @@ function TurnControls() {
     <div className={styles.controls}>
       {myTurn ? (
         <Button onClick={endMyTurn} aria-keyshortcuts="Enter">
-          End Turn
+          {d.hud.endTurn}
         </Button>
       ) : g.phase === 'playing' ? (
         <div className={styles.waiting}>
           <span className={styles.spinner} />
           <Label size="micro" color="secondary">
-            {actor.name} acts
+            {fmt(d.hud.acts, { name: playerName(actor, d) })}
           </Label>
         </div>
       ) : null}
@@ -307,6 +324,7 @@ function TurnControls() {
 function CastDisplay() {
   const casts = useGame((s) => s.casts);
   const g = useGame((s) => s.game)!;
+  const { d } = useI18n();
   const [shown, setShown] = useState<typeof casts>([]);
   const seen = useRef(new Set<number>());
   useEffect(() => {
@@ -321,17 +339,18 @@ function CastDisplay() {
     <div className={styles.casts} aria-live="polite">
       {shown.map((c) => {
         const p = g.players[c.player];
-        const d = CARD_BY_ID[c.cardId];
         return (
           <div key={c.id} className={styles.cast}>
             <div className={styles.castHead}>
-              <span className={styles.castWho}>{p.human ? 'You' : p.name}</span>
+              <span className={styles.castWho}>{playerName(p, d)}</span>
               <Label size="nano" color="faint">
-                {c.targets.length ? `cast on ${c.targets.map((t) => (g.players[t].human ? 'you' : g.players[t].name)).join(' & ')}` : 'cast'}
+                {c.targets.length
+                  ? fmt(d.hud.castOn, { targets: c.targets.map((t) => (g.players[t].human && g.players[t].defaultName ? d.common.youObj : g.players[t].name)).join(d.common.and) })
+                  : d.hud.cast}
               </Label>
             </div>
             <Card id={c.cardId} width={150} />
-            <span className="sr-only">{d.title}</span>
+            <span className="sr-only">{cardTitle(c.cardId, d)}</span>
           </div>
         );
       })}
@@ -343,6 +362,7 @@ function CastDisplay() {
 function TurnBanner() {
   const g = useGame((s) => s.game)!;
   const [hiddenSeq, setHiddenSeq] = useState(-1);
+  const { d } = useI18n();
   const p = g.players[g.current];
   const seq = g.turnSeq;
   useEffect(() => {
@@ -353,8 +373,8 @@ function TurnBanner() {
   return (
     <div key={seq} className={styles.banner}>
       <Flourish width={260} />
-      <div className={styles.bannerText}>{p.human ? 'Your Turn' : p.name}</div>
-      <Label size="micro" color="secondary">{p.human ? `Round ${g.round}` : 'is acting'}</Label>
+      <div className={styles.bannerText}>{p.human ? d.hud.yourTurn : p.name}</div>
+      <Label size="micro" color="secondary">{p.human ? fmt(d.hud.roundN, { n: g.round }) : d.hud.isActing}</Label>
     </div>
   );
 }
@@ -362,6 +382,7 @@ function TurnBanner() {
 /* ---------------- toast ---------------- */
 function Toast() {
   const err = useGame((s) => s.error);
+  const { d } = useI18n();
   const [hiddenId, setHiddenId] = useState<number | null>(null);
   useEffect(() => {
     if (!err) return;
@@ -371,7 +392,7 @@ function Toast() {
   if (!err || hiddenId === err.id) return null;
   return (
     <div key={err.id} className={styles.toast} role="status">
-      {err.text}
+      {reasonText(err.reason, err.n, d)}
     </div>
   );
 }
@@ -379,6 +400,7 @@ function Toast() {
 /* ---------------- inspect ---------------- */
 function Inspect() {
   const { id, setInspect } = useGame(useShallow((s) => ({ id: s.inspect, setInspect: s.setInspect })));
+  const { d: t } = useI18n();
   useEffect(() => {
     if (!id) return;
     const k = (e: KeyboardEvent) => e.key === 'Escape' && setInspect(null);
@@ -387,6 +409,7 @@ function Inspect() {
   }, [id, setInspect]);
   if (!id) return null;
   const d = cardDef(id);
+  const text = (t.cards as Record<string, { title: string; effect: string; trigger?: string; selfCost?: string }>)[id];
   return (
     <div className={styles.overlay} onClick={() => setInspect(null)}>
       <div className={styles.inspect} onClick={(e) => e.stopPropagation()}>
@@ -394,48 +417,48 @@ function Inspect() {
           <Card id={id} width={340} />
         </HoloCard>
         <div className={styles.inspectInfo}>
-          <Label size="micro" color="secondary">{d.kind === 'genesis' ? `Genesis · ${d.temperament}` : d.category}</Label>
-          <div className={styles.inspectTitle}>{d.title}</div>
+          <Label size="micro" color="secondary">{d.kind === 'genesis' ? fmt(t.inspect.genesisOf, { temper: t.temperaments[d.temperament] }) : t.categories[d.category]}</Label>
+          <div className={styles.inspectTitle}>{text.title}</div>
           <Flourish width={220} />
-          <p className={styles.inspectText}>{d.effect}</p>
+          <p className={styles.inspectText}>{text.effect}</p>
           {d.kind === 'base' && (
             <dl className={styles.facts}>
-              <dt>Reach</dt>
+              <dt>{t.inspect.reach}</dt>
               <dd>
                 {d.target === 'opponent'
                   ? d.element === 'ice'
-                    ? 'Ranged — any rival'
+                    ? t.inspect.reachRanged
                     : d.tags.includes('Reach')
-                      ? 'Reach — any rival'
-                      : 'Neighbours only'
+                      ? t.inspect.reachAny
+                      : t.inspect.reachNeighbours
                   : d.tags.includes('Leader')
-                    ? 'The leader'
+                    ? t.inspect.reachLeader
                     : d.target === 'none'
-                      ? 'Self / table'
-                      : 'Seats'}
+                      ? t.inspect.reachSelf
+                      : t.inspect.reachSeats}
               </dd>
               {d.category === 'Maneuver' && ['sidestep', 'flank', 'rotate', 'pivot', 'displace', 'blindside'].includes(d.id) && (
                 <>
-                  <dt>Tempo</dt>
-                  <dd>Must open your turn · ends it</dd>
+                  <dt>{t.inspect.tempo}</dt>
+                  <dd>{t.inspect.tempoManeuver}</dd>
                 </>
               )}
             </dl>
           )}
           {d.kind === 'genesis' && (
             <dl className={styles.facts}>
-              <dt>Trigger</dt>
-              <dd>{d.trigger}</dd>
-              {d.selfCost && (
+              <dt>{t.inspect.trigger}</dt>
+              <dd>{text.trigger}</dd>
+              {text.selfCost && (
                 <>
-                  <dt>Self-cost</dt>
-                  <dd>{d.selfCost}</dd>
+                  <dt>{t.inspect.selfCost}</dt>
+                  <dd>{text.selfCost}</dd>
                 </>
               )}
             </dl>
           )}
           <Button size="label" onClick={() => setInspect(null)}>
-            Close
+            {t.common.close}
           </Button>
         </div>
       </div>
@@ -446,6 +469,7 @@ function Inspect() {
 /* ---------------- genesis reveal ---------------- */
 function GenesisReveal() {
   const { queue, dismiss } = useGame(useShallow((s) => ({ queue: s.genesisQueue, dismiss: s.dismissGenesis })));
+  const { d: t } = useI18n();
   const id = queue[0];
   if (!id) return null;
   const d = cardDef(id);
@@ -454,20 +478,20 @@ function GenesisReveal() {
     <div className={styles.genesisOverlay} onClick={dismiss}>
       <div className={styles.genesisRays} aria-hidden="true" />
       <div className={styles.genesisInner} onClick={(e) => e.stopPropagation()}>
-        <Label size="micro" color="secondary">Eureka</Label>
-        <div className={styles.genesisHead}>Genesis</div>
+        <Label size="micro" color="secondary">{t.genesis.eureka}</Label>
+        <div className={styles.genesisHead}>{t.genesis.head}</div>
         <div className={styles.genesisTemper}>
           <TemperamentMark temperament={d.temperament} size={18} />
-          <Label size="micro">{d.temperament}</Label>
+          <Label size="micro">{t.temperaments[d.temperament]}</Label>
         </div>
         <div className={styles.genesisCard}>
           <HoloCard foil intensity={1.3}>
             <Card id={id} width={300} />
           </HoloCard>
         </div>
-        <p className={styles.genesisNote}>Materialised in your hand. Playing a Genesis card costs nothing and does not use a play.</p>
+        <p className={styles.genesisNote}>{t.genesis.note}</p>
         <Button variant="frame" onClick={dismiss}>
-          Receive
+          {t.genesis.receive}
         </Button>
       </div>
     </div>
@@ -477,6 +501,7 @@ function GenesisReveal() {
 /* ---------------- end screen ---------------- */
 function EndScreen() {
   const { g, stats, start } = useGame(useShallow((s) => ({ g: s.game!, stats: s.stats, start: s.start })));
+  const { d, href } = useI18n();
   const [show, setShow] = useState(false);
   useEffect(() => {
     if (g.phase !== 'over') return;
@@ -490,35 +515,35 @@ function EndScreen() {
   return (
     <div className={[styles.endOverlay, won ? styles.endWon : styles.endLost].join(' ')}>
       <div className={styles.endInner}>
-        <Label size="micro" color="secondary">{won ? 'Victory' : 'Defeat'}</Label>
-        <h2 className={styles.endTitle}>{won ? 'The Center is yours' : `The Center falls to ${champ?.name ?? '—'}`}</h2>
+        <Label size="micro" color="secondary">{won ? d.end.victory : d.end.defeat}</Label>
+        <h2 className={styles.endTitle}>{won ? d.end.won : fmt(d.end.lost, { name: champ ? playerName(champ, d) : '—' })}</h2>
         <Flourish width={320} />
         <ol className={styles.endList}>
           {order.map((p, i) => (
             <li key={p.index} data-me={p.human}>
-              <span className={styles.endRank}>{['I', 'II', 'III', 'IV'][i]}</span>
-              <span className={styles.endName}>{p.human ? 'You' : p.name}</span>
+              <span className={styles.endRank}>{d.end.ranks[i]}</span>
+              <span className={styles.endName}>{playerName(p, d)}</span>
               <span className={styles.endPull}>{p.pull}</span>
             </li>
           ))}
         </ol>
         <div className={styles.endStats}>
           <span>
-            <b>{g.round}</b> {g.round === 1 ? 'round' : 'rounds'}
+            <b>{g.round}</b> {plural(g.round, d.end.roundsOne, d.end.roundsOther)}
           </span>
           <span>
-            <b>{stats.wins}</b> {stats.wins === 1 ? 'win' : 'wins'}
+            <b>{stats.wins}</b> {plural(stats.wins, d.end.winsOne, d.end.winsOther)}
           </span>
           <span>
-            <b>{stats.losses}</b> {stats.losses === 1 ? 'loss' : 'losses'}
+            <b>{stats.losses}</b> {plural(stats.losses, d.end.lossesOne, d.end.lossesOther)}
           </span>
         </div>
         <div className={styles.endActions}>
-          <Button variant="frame" onClick={() => start({ difficulty: g.difficulty, name: g.players[0].name })}>
-            Play again
+          <Button variant="frame" onClick={() => start({ difficulty: g.difficulty, name: g.players[0].defaultName ? undefined : g.players[0].name })}>
+            {d.end.again}
           </Button>
-          <Link href="/" className={styles.endLink}>
-            <Button>Main menu</Button>
+          <Link href={href('/')} className={styles.endLink}>
+            <Button>{d.end.menu}</Button>
           </Link>
         </div>
       </div>
@@ -528,11 +553,12 @@ function EndScreen() {
 
 /* ---------------- menu ---------------- */
 function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+  const { d } = useI18n();
   return (
     <button className={styles.toggle} onClick={onClick} aria-pressed={on}>
       <Label size="micro" color={on ? 'primary' : 'faint'}>{label}</Label>
       <span className={styles.toggleVal} data-on={on}>
-        {on ? 'On' : 'Off'}
+        {on ? d.common.on : d.common.off}
       </span>
     </button>
   );
@@ -540,6 +566,7 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
 
 function Menu({ onClose }: { onClose: () => void }) {
   const { settings, setSettings, quit } = useGame(useShallow((s) => ({ settings: s.settings, setSettings: s.setSettings, quit: s.quit })));
+  const { d, href } = useI18n();
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', k);
@@ -548,33 +575,36 @@ function Menu({ onClose }: { onClose: () => void }) {
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.menu} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.menuTitle}>Paused</div>
+        <div className={styles.menuTitle}>{d.menu.paused}</div>
         <Flourish width={240} />
+        <div className={styles.menuLang}>
+          <Label size="micro" color="faint">{d.lang.label}</Label>
+          <LangSwitch />
+        </div>
         <div className={styles.menuGroup}>
-          <Toggle label="Sound" on={settings.sound} onClick={() => setSettings({ sound: !settings.sound })} />
-          <Toggle label="Ambience" on={settings.music} onClick={() => setSettings({ music: !settings.music })} />
-          <Toggle label="High fidelity" on={settings.quality === 'high'} onClick={() => setSettings({ quality: settings.quality === 'high' ? 'low' : 'high' })} />
-          <Toggle label="Fast rivals" on={settings.speed === 2} onClick={() => setSettings({ speed: settings.speed === 2 ? 1 : 2 })} />
+          <Toggle label={d.menu.sound} on={settings.sound} onClick={() => setSettings({ sound: !settings.sound })} />
+          <Toggle label={d.menu.ambience} on={settings.music} onClick={() => setSettings({ music: !settings.music })} />
+          <Toggle label={d.menu.fidelity} on={settings.quality === 'high'} onClick={() => setSettings({ quality: settings.quality === 'high' ? 'low' : 'high' })} />
+          <Toggle label={d.menu.fast} on={settings.speed === 2} onClick={() => setSettings({ speed: settings.speed === 2 ? 1 : 2 })} />
         </div>
         <div className={styles.menuHelp}>
-          <Label size="nano" color="secondary">How to play</Label>
+          <Label size="nano" color="secondary">{d.menu.howTo}</Label>
           <ul>
-            <li>Pull cards drag the Center toward you. First to {WIN_PULL} wins.</li>
-            <li>Attacks push it away from a rival. Plasma attacks reach only your two neighbours; Cryo is ranged.</li>
-            <li>Each turn you gain one of every element plus one attuned to your hand. Up to three plays.</li>
-            <li>Click a card, then a glowing rival. Right-click to inspect. Enter ends the turn.</li>
+            {d.menu.help.map((line, i) => (
+              <li key={i}>{fmt(line, { n: WIN_PULL })}</li>
+            ))}
           </ul>
         </div>
         <div className={styles.menuActions}>
           <Button variant="frame" onClick={onClose}>
-            Resume
+            {d.menu.resume}
           </Button>
-          <Link href="/rules" target="_blank">
-            <Button size="label">Full rules</Button>
+          <Link href={href('/rules')} target="_blank">
+            <Button size="label">{d.menu.rules}</Button>
           </Link>
-          <Link href="/" onClick={() => quit()}>
+          <Link href={href('/')} onClick={() => quit()}>
             <Button size="label" color="fire">
-              Forfeit
+              {d.menu.forfeit}
             </Button>
           </Link>
         </div>
@@ -596,6 +626,7 @@ function useAiDriver() {
 
 export function Hud() {
   const g = useGame((s) => s.game);
+  const { d } = useI18n();
   const [menu, setMenu] = useState(false);
   useAiDriver();
   useEffect(() => {
@@ -616,9 +647,9 @@ export function Hud() {
       <div className={styles.bottom}>
         <div className={styles.bottomLeft}>
           <div className={styles.me}>
-            <span className={styles.meName}>{g.players[0].name}</span>
+            <span className={styles.meName}>{playerName(g.players[0], d)}</span>
             <span className={styles.mePull}>{g.players[0].pull}</span>
-            <Label size="nano" color="faint">{['First', 'Second', 'Third', 'Last'][rank]}</Label>
+            <Label size="nano" color="faint">{d.hud.ranks[rank]}</Label>
           </div>
           <PoolBar />
         </div>

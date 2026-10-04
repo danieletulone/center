@@ -7,17 +7,21 @@ import { ElementOrb } from '@/ds/ElementOrb';
 import { Flourish } from '@/ds/Flourish';
 import { Label } from '@/ds/Label';
 import { sfx } from '@/lib/audio';
+import { fmt } from '@/i18n';
+import { useI18n } from '@/i18n/I18nProvider';
+import { LangSwitch } from './LangSwitch';
 import styles from './Title.module.css';
 
 const TitleScene = dynamic(() => import('@/three/TitleScene'), { ssr: false });
 
-const ITEMS = [
-  { href: '/play', label: 'Enter the Center', sub: 'Play against three rivals' },
-  { href: '/codex', label: 'Codex', sub: 'All 82 cards' },
-  { href: '/rules', label: 'Rules', sub: 'How the tug is won' },
-];
 
 export function Title() {
+  const { d, href } = useI18n();
+  const items = [
+    { href: href('/play'), label: d.title.enter, sub: d.title.enterSub },
+    { href: href('/codex'), label: d.title.codex, sub: d.title.codexSub },
+    { href: href('/rules'), label: d.title.rules, sub: d.title.rulesSub },
+  ];
   const raw = useStored('center.stats.v1');
   const stats = useMemo<{ wins: number; played: number } | null>(() => {
     try {
@@ -33,14 +37,14 @@ export function Title() {
       </div>
       <div className={styles.veil} aria-hidden="true" />
       <div className={styles.content}>
-        <div className={styles.kicker}>A turn-based tug-of-war for four</div>
+        <div className={styles.kicker}>{d.common.kicker}</div>
         <h1 className={styles.title}>Center</h1>
-        <div className={styles.sub}>Single point of contention. Four ways to want it.</div>
+        <div className={styles.sub}>{d.common.tagline}</div>
         <div className={styles.flourish}>
           <Flourish width={360} />
         </div>
-        <nav className={styles.menu} aria-label="Main">
-          {ITEMS.map((it, i) => (
+        <nav className={styles.menu} aria-label={d.title.nav}>
+          {items.map((it, i) => (
             <Link
               key={it.href}
               href={it.href}
@@ -60,27 +64,21 @@ export function Title() {
       </div>
       <footer className={styles.footer}>
         <div className={styles.legend}>
-          {(
-            [
-              ['fire', 'Plasma'],
-              ['ice', 'Cryo'],
-              ['arcane', 'Particle'],
-              ['flux', 'Flux'],
-            ] as const
-          ).map(([el, name]) => (
+          {(['fire', 'ice', 'arcane', 'flux'] as const).map((el) => (
             <div key={el} className={styles.legendItem}>
               <ElementOrb element={el} size={16} />
-              <Label size="nano" color="faint">{name}</Label>
+              <Label size="nano" color="faint">{d.elements[el]}</Label>
             </div>
           ))}
         </div>
         <div className={styles.meta}>
+          <LangSwitch />
           {stats && stats.played > 0 ? (
             <Label size="nano" color="faint">
-              {stats.wins} / {stats.played} claimed
+              {fmt(d.title.claimed, { wins: stats.wins, played: stats.played })}
             </Label>
           ) : (
-            <Label size="nano" color="faint">A Waract game</Label>
+            <Label size="nano" color="faint">{d.common.studio}</Label>
           )}
         </div>
       </footer>

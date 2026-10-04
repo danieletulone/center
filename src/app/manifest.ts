@@ -6,6 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'CENTER',
     description: 'A turn-based tug-of-war for four.',
     start_url: '/',
+    lang: 'en',
     display: 'fullscreen',
     orientation: 'landscape',
     background_color: '#000000',

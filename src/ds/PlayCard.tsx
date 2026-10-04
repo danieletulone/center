@@ -18,11 +18,11 @@ const PIP_GLOW: Record<string, string> = {
   flux: 'var(--flux-frost)',
 };
 
-export function CostPips({ cost, scale = 1, size = 12 }: { cost: Cost[]; scale?: number; size?: number }) {
+export function CostPips({ cost, scale = 1, size = 12, freeLabel = 'Free' }: { cost: Cost[]; scale?: number; size?: number; freeLabel?: string }) {
   if (!cost.length || cost[0].el === 'free') {
     return (
       <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10 * scale, letterSpacing: '0.28em', textTransform: 'uppercase', color: 'var(--graphite-400)' }}>
-        Free
+        {freeLabel}
       </span>
     );
   }
@@ -59,6 +59,8 @@ export interface PlayCardProps {
   width?: number;
   style?: CSSProperties;
   className?: string;
+  /** localized label for zero-cost cards */
+  freeLabel?: string;
 }
 
 /**
@@ -66,7 +68,7 @@ export interface PlayCardProps {
  * the element-lit glyph in its starburst, the carved title, keyword
  * tags and the rules effect.
  */
-export function PlayCard({ element, icon, title, category, cost, effect, tags = [], width = 300, style, className }: PlayCardProps) {
+export function PlayCard({ element, icon, title, category, cost, effect, tags = [], width = 300, style, className, freeLabel }: PlayCardProps) {
   const s = width / 300;
   return (
     <div
@@ -102,7 +104,7 @@ export function PlayCard({ element, icon, title, category, cost, effect, tags = 
         >
           {category}
         </span>
-        <CostPips cost={cost} scale={s} />
+        <CostPips cost={cost} scale={s} freeLabel={freeLabel} />
       </div>
       <div style={{ marginTop: 12 * s, width: '88%' }}>
         <Flourish width="100%" />

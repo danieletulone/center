@@ -10,13 +10,6 @@ export type Temperament = 'ascendant' | 'malefic' | 'tempered';
 
 export const ELEMENTS: Element[] = ['fire', 'ice', 'arcane', 'flux'];
 
-export const ELEMENT_NAME: Record<Element, string> = {
-  fire: 'Plasma',
-  ice: 'Cryo',
-  arcane: 'Particle',
-  flux: 'Flux',
-};
-
 export interface Cost {
   n: number;
   el: CostElement;
@@ -39,26 +32,24 @@ export type TargetKind =
   | 'any-seat' // any other player regardless of reach (maneuvers)
   | 'two-others'; // two other players (Displace)
 
+export type Tag = 'Backlash' | 'Reach' | 'Leader' | 'Finisher' | 'Pressure Valve' | 'Rare';
+export type SectionName = Category | 'Ascendant' | 'Malefic' | 'Tempered';
+
+/** Card definitions are pure data; all text lives in the i18n dictionaries under `cards[id]`. */
 export interface BaseCardDef {
   id: string;
   kind: 'base';
-  title: string;
   element: Element;
   category: Category;
   cost: Cost[];
-  effect: string;
-  tags: string[];
+  tags: Tag[];
   target: TargetKind;
 }
 
 export interface GenesisCardDef {
   id: string;
   kind: 'genesis';
-  title: string;
   temperament: Temperament;
-  trigger: string;
-  effect: string;
-  selfCost?: string;
   target: TargetKind;
 }
 
@@ -150,6 +141,8 @@ export interface Player {
   index: number;
   name: string;
   human: boolean;
+  /** the local player kept the default name — addressed in the second person */
+  defaultName: boolean;
   seat: number; // 0 south · 1 west · 2 north · 3 east
   pull: number;
   hand: CardInstance[];
@@ -175,15 +168,103 @@ export type FxEvent =
   | { kind: 'swap'; a: number; b: number }
   | { kind: 'shockwave'; element: Element | 'mono' }
   | { kind: 'genesis'; at: number; card: string }
-  | { kind: 'float'; at: number; text: string; tone: 'good' | 'bad' | 'neutral' | Element };
+  | { kind: 'float'; at: number; key: FloatKey; n?: number; tone: 'good' | 'bad' | 'neutral' | Element };
+
+/** Floating combat text above a seat — rendered through the i18n dictionary. */
+export type FloatKey =
+  | 'gain'
+  | 'loss'
+  | 'whiteout'
+  | 'blocked'
+  | 'immune'
+  | 'triangle'
+  | 'block'
+  | 'skipped'
+  | 'iced'
+  | 'backlash'
+  | 'marked'
+  | 'generatorLost'
+  | 'phased'
+  | 'cancelled';
+
+/** Chronicle lines are stored as keys + parameters and formatted per locale. */
+export type LogKey =
+  | 'wake'
+  | 'reshuffle'
+  | 'plagueForbids'
+  | 'whiteoutSwallows'
+  | 'patienceDoubles'
+  | 'blockAside'
+  | 'mirrorReflects'
+  | 'magniusRedirects'
+  | 'equilibriumRests'
+  | 'counterSwings'
+  | 'genesisMaterialises'
+  | 'famineSkip'
+  | 'burnSears'
+  | 'plagueGnaws'
+  | 'tideDraws'
+  | 'cryoBindNoRefresh'
+  | 'skipDraw'
+  | 'roundCap'
+  | 'claims'
+  | 'chainCatches'
+  | 'reversal'
+  | 'phased'
+  | 'staticCancels'
+  | 'plays'
+  | 'playsOn'
+  | 'empowered'
+  | 'maneuverConsumes';
+
+export interface LogParams {
+  /** subject player index */
+  a?: number;
+  /** target player index */
+  t?: number;
+  /** other player index */
+  x?: number;
+  /** card id */
+  c?: string;
+  n?: number;
+  /** list of target player indices */
+  ts?: number[];
+  temper?: Temperament;
+  beats?: Temperament;
+}
 
 export interface LogEntry {
   id: number;
   round: number;
   actor: number;
-  text: string;
+  key: LogKey;
+  p: LogParams;
   tone?: Element | 'mono' | 'system';
 }
+
+/** Why a card can't be played right now — rendered through the i18n dictionary. */
+export type ReasonKey =
+  | 'over'
+  | 'notTurn'
+  | 'notInHand'
+  | 'locked'
+  | 'maneuverUsed'
+  | 'noPlays'
+  | 'noElements'
+  | 'numbed'
+  | 'maneuverFirst'
+  | 'cantMove'
+  | 'lockstep'
+  | 'needPull'
+  | 'needCards'
+  | 'youLead'
+  | 'anchored'
+  | 'noSeat'
+  | 'noTarget'
+  | 'noLegalSeat'
+  | 'chooseTarget'
+  | 'outOfReach'
+  | 'cannotPlay';
 
 export interface GameState {
   seed: number;

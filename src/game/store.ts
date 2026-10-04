@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import { choosePlay } from './ai';
 import { CARD_BY_ID, cardDef } from './cards';
 import { canPlay, endTurn, legalTargets, newGame, play } from './engine';
-import type { Difficulty, FxEvent, GameState, PlayIntent } from './types';
+import type { Difficulty, FxEvent, GameState, PlayIntent, ReasonKey } from './types';
 import { sfx } from '@/lib/audio';
 
 export type TimedFx = FxEvent & { id: number; t: number };
@@ -36,10 +36,10 @@ interface Store {
   selected: string | null;
   pendingTargets: number[];
   inspect: string | null;
-  error: { id: number; text: string } | null;
+  error: { id: number; reason: ReasonKey; n?: number } | null;
   settings: Settings;
   stats: { played: number; wins: number; losses: number };
-  start: (opts: { difficulty: Difficulty; name: string }) => void;
+  start: (opts: { difficulty: Difficulty; name?: string }) => void;
   quit: () => void;
   select: (uid: string | null) => void;
   toggleTarget: (idx: number) => void;
@@ -169,7 +169,7 @@ export const useGame = create<Store>((set, get) => ({
     const def = cardDef(c.id);
     const legal = legalTargets(g, g.players[0], def.id);
     if (!legal.includes(idx)) {
-      set({ error: { id: ++errSeq, text: 'Out of reach' } });
+      set({ error: { id: ++errSeq, reason: 'outOfReach' } });
       sfx.play('deny');
       return;
     }
@@ -188,7 +188,7 @@ export const useGame = create<Store>((set, get) => ({
     const intent: PlayIntent = { uid: selected, targets: pendingTargets, direction };
     const r = play(g, 0, intent);
     if (!r.ok) {
-      set({ error: { id: ++errSeq, text: r.reason ?? 'Cannot play' } });
+      set({ error: { id: ++errSeq, reason: r.reason ?? 'cannotPlay', n: r.n } });
       sfx.play('deny');
       return;
     }

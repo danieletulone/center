@@ -1,0 +1,38 @@
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sep {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: var(--graphite-600);
+}
+.btn {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px 2px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  text-transform: uppercase;
+  color: var(--graphite-500);
+  transition: color var(--dur-fast) var(--ease-veil);
+}
+.btn:hover {
+  color: var(--ash);
+}
+.on {
+  color: var(--bone);
+  text-shadow: 0 0 12px rgba(176, 92, 255, 0.7);
+  cursor: default;
+}

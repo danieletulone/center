@@ -13,6 +13,7 @@ pull of **21** claims it.
 - **A WebGL table** (three.js / React Three Fiber): a shader Nexus that drifts toward whoever is winning, light tethers, element-coloured spell bolts, particle bursts, shields, frost crowns, floor shockwaves, bloom, chromatic aberration and camera shake
 - **Procedural audio**: every sound is synthesised at runtime with WebAudio, so there are no audio assets to ship
 - **Codex** (all 82 cards, filter and search), **Rules**, OG images, PWA manifest, sitemap
+- **English and Italian**, covering every card, log line, rule and label. Switch language at any time, even mid-match, without losing the game
 
 ## Stack
 
@@ -45,15 +46,37 @@ All routes prerender as static, so it runs on any Node host or on Vercel.
 On Vercel, import the repo as-is (Next.js preset). Set `NEXT_PUBLIC_SITE_URL` to the
 production origin so canonical URLs, the sitemap and OG metadata resolve.
 
+## Languages
+
+Every page lives under a locale prefix: `/en/…` or `/it/…`. `src/proxy.ts` redirects
+unprefixed URLs to the visitor's language: a saved choice (cookie `center.lang`) wins,
+then `Accept-Language`, then English.
+
+- `src/i18n/en.ts` is the source dictionary. `it.ts` is typed as `Dict`, so a
+  missing key is a compile error.
+- The engine never produces prose. Log lines, refusal reasons, floating combat
+  text and statuses are keys plus parameters, formatted per locale in `src/i18n/game.ts`.
+  Chronicle templates have second-person variants (`_you`, `_xyou`, `_tyou`) for
+  sentences about the local player.
+- The EN · IT switch (title footer, setup, pause menu, Codex, Rules) swaps the
+  dictionary in place and rewrites the URL, so a match in progress continues.
+- Metadata, OG images, `<html lang>`, hreflang alternates and the sitemap are per locale.
+
+To add a language: add it to `LOCALES` in `src/i18n/config.ts`, create a dictionary
+typed `Dict`, and register it in `src/i18n/index.ts`.
+
 ## Layout
 
 ```
 src/
-  app/            routes: / (title), /play, /codex, /rules, plus OG image, icon, manifest, robots, sitemap
+  app/[lang]/     routes per locale: / (title), /play, /codex, /rules, OG image, localized 404
+  app/            icon, manifest, robots, sitemap
+  i18n/           dictionaries (en, it), provider + useI18n, formatters for engine output
+  proxy.ts        locale redirect
   ds/             Waract design-system components ported to TSX (PlayCard, GenesisCard, CardGlyph, ElementOrb, Flourish, Button…)
-  game/           cards.ts (the 82 cards) · engine.ts (rules) · ai.ts (rivals) · store.ts (client store + FX queue)
+  game/           cards.ts (the 82 cards, pure data) · engine.ts (rules) · ai.ts (rivals) · store.ts (client store + FX queue)
   three/          GameScene (table, tokens, tethers, FX director), TitleScene, Nexus shader, HexFloor shader, pooled particles
-  ui/             Title, Play/Setup, HUD (hand, pool, chronicle, cast display, genesis reveal, end screen), Codex
+  ui/             Title, Play/Setup, HUD (hand, pool, chronicle, cast display, genesis reveal, end screen), Codex, Rules, LangSwitch
   lib/            procedural audio, storage hook
 scripts/simulate.ts
 ```
