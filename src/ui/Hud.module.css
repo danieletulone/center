@@ -1126,3 +1126,9 @@
     transform-origin: right bottom;
   }
 }
+
+.slider {
+  width: 140px;
+  accent-color: #a46bff;
+  cursor: pointer;
+}

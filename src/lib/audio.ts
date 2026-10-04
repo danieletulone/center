@@ -6,6 +6,8 @@
    user gesture (browser autoplay policy).
    ============================================================ */
 
+import { Score, type Scene } from './music';
+
 type Tone = string | undefined;
 
 const PITCH: Record<string, number> = { fire: 110, ice: 523.25, arcane: 196, flux: 392, mono: 261.63 };
@@ -13,11 +15,13 @@ const PITCH: Record<string, number> = { fire: 110, ice: 523.25, arcane: 196, flu
 class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private musicGain: GainNode | null = null;
+  private musicOut: AudioNode | null = null;
+  private score: Score | null = null;
+  private musicVolume = 0.8;
+  private scene: Scene = 'title';
   private reverb: ConvolverNode | null = null;
   private enabled = true;
   private musicOn = true;
-  private droneStarted = false;
   private lastPlay: Record<string, number> = {};
 
   private ensure(): AudioContext | null {
@@ -37,10 +41,8 @@ class Sfx {
       const wet = this.ctx.createGain();
       wet.gain.value = 0.32;
       this.reverb.connect(wet).connect(this.master);
-      this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = 0;
-      this.musicGain.connect(this.master);
-      this.musicGain.connect(this.reverb);
+      // music has its own path to the compressor, so muting effects keeps the score
+      this.musicOut = comp;
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     return this.ctx;
@@ -112,36 +114,39 @@ class Sfx {
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(v ? 0.55 : 0, this.ctx.currentTime, 0.05);
   }
 
+  /** Music on/off (independent of sound effects). */
   setMusic(v: boolean) {
     this.musicOn = v;
-    if (this.musicGain && this.ctx) this.musicGain.gain.setTargetAtTime(v ? 0.05 : 0, this.ctx.currentTime, 0.8);
+    this.score?.setEnabled(v);
   }
 
-  /** Start the ambient drone (call from a user gesture). */
+  setMusicVolume(v: number) {
+    this.musicVolume = v;
+    this.score?.setVolume(v);
+  }
+
+  setScene(s: Scene) {
+    this.scene = s;
+    this.score?.setScene(s);
+  }
+
+  setTension(t: number) {
+    this.score?.setTension(t);
+  }
+
+  stinger(won: boolean) {
+    this.score?.stinger(won);
+  }
+
+  /** Start the score (must be called from a user gesture). */
   unlock() {
     const ctx = this.ensure();
-    if (!ctx || this.droneStarted) return;
-    this.droneStarted = true;
-    const freqs = [55, 82.41, 110.0, 164.81];
-    freqs.forEach((f, i) => {
-      const o = ctx.createOscillator();
-      o.type = i % 2 ? 'triangle' : 'sine';
-      o.frequency.value = f;
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.05 + i * 0.03;
-      const lg = ctx.createGain();
-      lg.gain.value = f * 0.004;
-      lfo.connect(lg).connect(o.frequency);
-      const g = ctx.createGain();
-      g.gain.value = 0.25 / (i + 1);
-      const filt = ctx.createBiquadFilter();
-      filt.type = 'lowpass';
-      filt.frequency.value = 600;
-      o.connect(filt).connect(g).connect(this.musicGain!);
-      o.start();
-      lfo.start();
-    });
-    this.setMusic(this.musicOn);
+    if (!ctx || this.score) return;
+    this.score = new Score(ctx, this.musicOut!, this.reverb!);
+    this.score.setVolume(this.musicVolume);
+    this.score.setEnabled(this.musicOn);
+    this.score.setScene(this.scene);
+    this.score.start();
   }
 
   play(name: string, tone?: Tone, power = 1) {

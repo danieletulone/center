@@ -304,7 +304,8 @@ export const en = {
   menu: {
     paused: 'Paused',
     sound: 'Sound',
-    ambience: 'Ambience',
+    ambience: 'Music',
+    musicVolume: 'Music volume',
     fidelity: 'High fidelity',
     fast: 'Fast rivals',
     howTo: 'How to play',

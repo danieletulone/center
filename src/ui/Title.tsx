@@ -31,7 +31,13 @@ export function Title() {
     }
   }, [raw]);
   return (
-    <main className={styles.main} onPointerDown={() => sfx.unlock()}>
+    <main
+      className={styles.main}
+      onPointerDown={() => {
+        sfx.setScene('title');
+        sfx.unlock();
+      }}
+    >
       <div className={styles.scene} aria-hidden="true">
         <TitleScene />
       </div>

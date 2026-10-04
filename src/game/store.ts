@@ -24,6 +24,7 @@ export interface CastNotice {
 export interface Settings {
   sound: boolean;
   music: boolean;
+  musicVolume: number;
   quality: 'high' | 'low';
   speed: 1 | 2;
 }
@@ -75,7 +76,7 @@ function saveJSON(key: string, v: unknown) {
   }
 }
 
-const DEFAULT_SETTINGS: Settings = { sound: true, music: true, quality: 'high', speed: 1 };
+const DEFAULT_SETTINGS: Settings = { sound: true, music: true, musicVolume: 0.8, quality: 'high', speed: 1 };
 
 /** Keep only FX young enough to still be animating. */
 function recent(fx: TimedFx[]) {
@@ -148,11 +149,17 @@ export const useGame = create<Store>((set, get) => ({
     const g = newGame({ difficulty, playerName: name });
     const fx = drain(g);
     sfx.setEnabled(settings.sound);
+    sfx.setMusic(settings.music);
+    sfx.setMusicVolume(settings.musicVolume);
+    sfx.setScene('match');
     sfx.play('turn');
     set({ game: g, fx, casts: [], genesisQueue: [], selected: null, pendingTargets: [], inspect: null, settings, stats });
   },
 
-  quit: () => set({ game: null, fx: [], casts: [], selected: null, pendingTargets: [], genesisQueue: [] }),
+  quit: () => {
+    sfx.setScene('title');
+    set({ game: null, fx: [], casts: [], selected: null, pendingTargets: [], genesisQueue: [] });
+  },
 
   select: (uid) => {
     const g = get().game;
@@ -261,6 +268,7 @@ export const useGame = create<Store>((set, get) => ({
     saveJSON(SETTINGS_KEY, settings);
     sfx.setEnabled(settings.sound);
     sfx.setMusic(settings.music);
+    sfx.setMusicVolume(settings.musicVolume);
     set({ settings });
   },
 }));
@@ -273,6 +281,7 @@ function afterAction(g: GameState, get: () => Store, set: (p: Partial<Store>) =>
     else stats.losses += 1;
     saveJSON(STATS_KEY, stats);
     set({ stats });
+    sfx.stinger(g.winner === 0);
     setTimeout(() => sfx.play(g.winner === 0 ? 'victory' : 'defeat'), 900);
   }
 }

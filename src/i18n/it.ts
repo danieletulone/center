@@ -596,7 +596,8 @@ export const it: Dict = {
   menu: {
     paused: 'In pausa',
     sound: 'Suono',
-    ambience: 'Atmosfera',
+    ambience: 'Musica',
+    musicVolume: 'Volume musica',
     fidelity: 'Alta qualità',
     fast: 'Rivali rapidi',
     howTo: 'Come si gioca',

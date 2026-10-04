@@ -582,6 +582,18 @@ function Menu({ onClose }: { onClose: () => void }) {
           <LangSwitch />
         </div>
         <div className={styles.menuGroup}>
+          <label className={styles.toggle}>
+            <Label size="micro" color={settings.music ? 'primary' : 'faint'}>{d.menu.musicVolume}</Label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(settings.musicVolume * 100)}
+              onChange={(e) => setSettings({ musicVolume: Number(e.target.value) / 100, music: true })}
+              className={styles.slider}
+              aria-label={d.menu.musicVolume}
+            />
+          </label>
           <Toggle label={d.menu.sound} on={settings.sound} onClick={() => setSettings({ sound: !settings.sound })} />
           <Toggle label={d.menu.ambience} on={settings.music} onClick={() => setSettings({ music: !settings.music })} />
           <Toggle label={d.menu.fidelity} on={settings.quality === 'high'} onClick={() => setSettings({ quality: settings.quality === 'high' ? 'low' : 'high' })} />
@@ -613,6 +625,19 @@ function Menu({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ---------------- score tension ---------------- */
+/** Feed the music: how close anyone is to claiming the Center, Convergence, the final rounds. */
+function useScoreTension() {
+  const g = useGame((s) => s.game);
+  useEffect(() => {
+    if (!g || g.phase !== 'playing') return;
+    const top = Math.max(...g.players.map((p) => p.pull));
+    const race = Math.max(0, top) / WIN_PULL;
+    const late = Math.max(0, (g.round - 8) / (MAX_ROUNDS - 8));
+    sfx.setTension(0.15 + race * race * 0.75 + convergence(g) * 0.05 + late * 0.15);
+  }, [g]);
+}
+
 /* ---------------- AI driver ---------------- */
 function useAiDriver() {
   const { g, aiStep, blocked, speed } = useGame(useShallow((s) => ({ g: s.game, aiStep: s.aiStep, blocked: s.genesisQueue.length > 0, speed: s.settings.speed })));
@@ -629,6 +654,7 @@ export function Hud() {
   const { d } = useI18n();
   const [menu, setMenu] = useState(false);
   useAiDriver();
+  useScoreTension();
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !useGame.getState().selected && !useGame.getState().inspect) setMenu((m) => !m);
