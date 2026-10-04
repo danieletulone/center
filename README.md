@@ -3,7 +3,7 @@
 *A turn-based tug-of-war for four.* Single point of contention. Four ways to want it.
 
 CENTER is a browser card-strategy game built from the **Waract** design system
-(the Claude Design handoff in `../project`). Four players sit around the Center;
+(exported from Claude Design). Four players sit around the Center;
 pull cards drag it toward you, attacks push it away from your rivals. First to a
 pull of **21** claims it.
 
@@ -42,7 +42,7 @@ npm run simulate -- 300   # headless AI-vs-AI balance run (wins by seat, match l
 ## Deploy
 
 All routes prerender as static, so it runs on any Node host or on Vercel.
-On Vercel, set **Root Directory** to `center`. Set `NEXT_PUBLIC_SITE_URL` to the
+On Vercel, import the repo as-is (Next.js preset). Set `NEXT_PUBLIC_SITE_URL` to the
 production origin so canonical URLs, the sitemap and OG metadata resolve.
 
 ## Layout
